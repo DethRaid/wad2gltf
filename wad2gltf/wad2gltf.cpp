@@ -35,13 +35,28 @@ int main(const int argc, const char** argv)
     // }
     // 
     // const auto wad_filename = std::filesystem::path{arg1};
-    const auto wad_filename = std::filesystem::path{ R"(C:\Program Files (x86)\Steam\steamapps\common\DOOM 3 BFG Edition\base\wads\DOOM.WAD)" };
+    const auto wad_filename = std::filesystem::path{
+        R"(C:\Program Files (x86)\Steam\steamapps\common\DOOM 3 BFG Edition\base\wads\DOOM.WAD)"
+    };
+    const auto map_to_convert = std::string{"E1M1"};
 
     try
     {
         const auto wad = load_wad_file(wad_filename);
 
-        std::cout << "WAD file " << wad_filename << "\n\tType:" << wad.identification << "\n\tinfotables:" << wad.infotableofs << "\n\tnumlumps:" << wad.numlumps << "\n";
+        std::cout << "WAD file " << wad_filename << "\n\tType:" << wad.header->identification << "\n\tinfotables:" <<
+            wad.header->infotableofs << "\n\tnumlumps:" << wad.header->numlumps << "\n";
+
+        auto map_lump = std::find_if(wad.lump_directory.begin(), wad.lump_directory.end(), [&](const LumpInfo& lump)
+        {
+            return memcmp(lump.name, map_to_convert.c_str(), map_to_convert.size()) == 0;
+        });
+        if (map_lump == wad.lump_directory.end())
+        {
+            throw std::runtime_error{std::format("Could not find requested map {}", map_to_convert)};
+        }
+
+        std::cout << "Map lump " << map_lump->name << " Offset=" << map_lump->filepos << " Size=" << map_lump->size << "\n";
     }
     catch (const std::exception& e)
     {

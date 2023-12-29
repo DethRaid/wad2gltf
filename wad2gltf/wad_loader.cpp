@@ -57,33 +57,20 @@ WAD load_wad_file(const std::filesystem::path& wad_path)
     }
 
     // The DOOM and DOOM 2 WADs included in the DOOM 3 BFG edition are 12 and 14 MB, respectively. We can just load the whole thing into RAM without a care
-    const auto wad_data = read_binary_file(wad_path);
+    auto wad_data = read_binary_file(wad_path);
     if(!wad_data)
     {
         throw std::runtime_error{ "Could not read WAD file" };
     }
 
-    auto* wad_data_ptr = wad_data->data();
     auto wad = WAD{};
+    wad.raw_data = std::move(*wad_data);
 
-    // Fill the header
-    wad.identification[0] = *wad_data_ptr;
-    wad.identification[1] =*(wad_data_ptr + 1);
-    wad.identification[2] =*(wad_data_ptr + 2);
-    wad.identification[3] = *(wad_data_ptr + 3);
-    wad.numlumps = *reinterpret_cast<const int32_t*>(wad_data_ptr + 4);
-    wad.infotableofs = *reinterpret_cast<const int32_t*>(wad_data_ptr + 8);
+    auto* wad_data_ptr = wad.raw_data.data();
 
-    wad.lump_directory.resize(wad.numlumps);
-
-    auto* info_table_ptr = wad_data_ptr + wad.infotableofs;
-    for(auto i = 0; i < wad.numlumps; i++)
-    {
-        auto* cur_lump_info_ptr = info_table_ptr + (i * 16);
-        const auto lump_data = load_lump(cur_lump_info_ptr);
-        std::cout << "Read lump " << lump_data.name << " with offset=" << lump_data.filepos << " and size=" << lump_data.size << "\n";
-        wad.lump_directory[i] = lump_data;
-    }
-
+    wad.header = reinterpret_cast<WadHeader*>(wad_data_ptr);
+    auto* lump_directory_ptr = reinterpret_cast<LumpInfo*>(wad_data_ptr + wad.header->infotableofs);
+    wad.lump_directory = std::span{ lump_directory_ptr, lump_directory_ptr + wad.header->numlumps };
+    
     return wad;
 }

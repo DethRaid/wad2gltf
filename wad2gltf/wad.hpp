@@ -1,6 +1,24 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
+#include <span>
+
+struct WadHeader
+{
+    /**
+     * Identifier for the file. Must be either PWAD or IWAD
+     */
+    char identification[4];
+    /**
+     * Number of lumps in this WAD
+     */
+    int32_t numlumps;
+    /**
+     * Offset of the info table in the WAD data
+     */
+    int32_t infotableofs;
+};
 
 struct LumpInfo
 {
@@ -26,22 +44,26 @@ struct LumpInfo
  * File format of DOOM and related games
  *
  * Currently implements the DOOM file format, but not any successors. That might come later
+ *
+ * All the pointers in this data structure refer to the raw data vector. Thus, copying this data structure is not
+ * allowed. Maybe one day I'll write a good copy constructor/operator
  */
 struct WAD
 {
-    // Header
-    /**
-     * Identifier for the file. Must be either PWAD or IWAD
-     */
-    char identification[4];
-    /**
-     * Number of lumps in this WAD
-     */
-    int32_t numlumps;
-    /**
-     * Offset of the info table in the WAD data
-     */
-    int32_t infotableofs;
+    WadHeader* header;
 
-    std::vector<LumpInfo> lump_directory;
+    std::span<LumpInfo> lump_directory;
+
+    /**
+     * Raw data read from the WAD file
+     */
+    std::vector<uint8_t> raw_data;
+
+    WAD() = default;
+
+    WAD(const WAD& other) = delete;
+    WAD& operator=(const WAD& other) = delete;
+
+    WAD(WAD&& old) noexcept = default;
+    WAD& operator=(WAD&& old) noexcept = default;
 };
