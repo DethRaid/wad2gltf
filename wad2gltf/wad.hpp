@@ -45,8 +45,8 @@ struct LumpInfo
  *
  * Currently implements the DOOM file format, but not any successors. That might come later
  *
- * All the pointers in this data structure refer to the raw data vector. Thus, copying this data structure is not
- * allowed. Maybe one day I'll write a good copy constructor/operator
+ * All the pointers in this data structure refer to the raw data vector. Thus, copying this data
+ * structure is not allowed. Maybe one day I'll write a good copy constructor/operator
  */
 struct WAD
 {
@@ -66,4 +66,42 @@ struct WAD
 
     WAD(WAD&& old) noexcept = default;
     WAD& operator=(WAD&& old) noexcept = default;
+};
+
+struct Vertex
+{
+    int16_t x;
+    int16_t y;
+};
+
+struct LineDef
+{
+    uint16_t start_vertex;
+    uint16_t end_vertex;
+    int16_t flags;
+    int16_t special_type;
+    int16_t sector_tag;
+    int16_t front_sidedef;
+    int16_t back_sidedef;
+};
+
+struct SideDef
+{
+    int16_t x_offset;
+    int16_t y_offset;
+    char upper_texture_name[8];
+    char lower_texture_name[8];
+    char middle_texture_name[8];
+    int16_t sector_number;
+};
+
+struct Sector
+{
+    int16_t floor_height;
+    int16_t ceiling_height;
+    char floor_texture[8];
+    char ceiling_texture[8];
+    int16_t light_level;
+    int16_t special_type;
+    int16_t tag_number;
 };
