@@ -11,7 +11,9 @@
  * Contains utilities to create a mesh from a WAD map
  */
 
-struct WAD;
+namespace wad {
+    struct WAD;
+}
 
 /**
  * Creates a mesh from a map in the WAD data
@@ -24,4 +26,4 @@ struct WAD;
  *
  * TODO: More options, such as trying to combine faces that use the same texture
  */
-std::vector<Face> create_mesh_from_map(const WAD& wad, std::string_view map_name);
+std::vector<Sector> create_mesh_from_map(const wad::WAD& wad, std::string_view map_name);

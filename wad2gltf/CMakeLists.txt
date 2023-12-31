@@ -16,7 +16,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm tinygltf)
 
 # Add source to this project's executable.
-add_executable (wad2gltf "wad2gltf.cpp" "wad2gltf.h" "wad_loader.cpp" "map_reader.cpp" "gltf_export.cpp" )
+add_executable (wad2gltf "wad2gltf.cpp" "wad2gltf.h" "wad_loader.cpp" "map_reader.cpp" "gltf_export.cpp"  "texture_reader.cpp")
 target_link_libraries(wad2gltf PUBLIC
     glm
     tinygltf

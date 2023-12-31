@@ -9,6 +9,7 @@
 
 #include "gltf_export.hpp"
 #include "map_reader.hpp"
+#include "texture_reader.hpp"
 #include "wad_loader.hpp"
 
 /*
@@ -51,11 +52,13 @@ int main(const int argc, const char** argv)
 
         std::cout << "WAD file " << wad_filename << "\n\tType:" << wad.header->identification << "\n\tinfotables:" <<
             wad.header->infotableofs << "\n\tnumlumps:" << wad.header->numlumps << "\n";
+        
+        const auto sectors = create_mesh_from_map(wad, map_to_convert);
+        std::cout << "Generated " << sectors.size() << " sectors from the map\n";
 
-        const auto faces = create_mesh_from_map(wad, map_to_convert);
-        std::cout << "Generated " << faces.size() << " faces from the map\n";
+        // Load all the textures for each sector
 
-        const auto gltf_map = export_to_gltf(map_to_convert, faces);
+        const auto gltf_map = export_to_gltf(map_to_convert, sectors);
         std::cout << "Generated glTF data\n";
 
         tinygltf::TinyGLTF gltf;

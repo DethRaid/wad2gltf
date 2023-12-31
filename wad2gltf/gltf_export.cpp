@@ -1,6 +1,10 @@
 #include "gltf_export.hpp"
 
+#include <format>
 #include <tiny_gltf.h>
+
+#include <glm/ext/quaternion_trigonometric.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 template <typename DataType>
 void write_data_to_buffer(std::vector<uint8_t>& buffer, const std::span<const DataType> data)
@@ -12,7 +16,7 @@ void write_data_to_buffer(std::vector<uint8_t>& buffer, const std::span<const Da
     std::memcpy(dest_ptr, data.data(), num_bytes);
 }
 
-tinygltf::Model export_to_gltf(const std::string_view name, const std::span<const Face> faces)
+tinygltf::Model export_to_gltf(const std::string_view name, const std::span<const Sector> sectors)
 {
     auto model = tinygltf::Model{};
     model.defaultScene = 0;
@@ -20,17 +24,6 @@ tinygltf::Model export_to_gltf(const std::string_view name, const std::span<cons
 
     auto& scene = model.scenes.emplace_back();
     scene.name = std::string{name};
-    scene.nodes.emplace_back(0);
-
-    auto& node = model.nodes.emplace_back();
-    node.name = std::string{name};
-    node.mesh = 0;
-    node.rotation = {0, 0, 0, 1};
-    node.scale = {1, 1, 1};
-    node.translation = {0, 0, 0};
-
-    auto& mesh = model.meshes.emplace_back();
-    mesh.name = std::string{name};
 
     // Buffers for all the attributes, hopefully in a format that's easy to mutate
     model.buffers.resize(4);
@@ -55,87 +48,104 @@ tinygltf::Model export_to_gltf(const std::string_view name, const std::span<cons
     // buffer, so we need to know the final size of the buffer
     // The views will be in the same order as the buffers, so we can construct the accessors
 
-    for (const auto& face : faces)
+    for (const auto& sector : sectors)
     {
-        auto& primitive = mesh.primitives.emplace_back();
-        primitive.mode = TINYGLTF_MODE_TRIANGLES;
+        scene.nodes.emplace_back(model.nodes.size());
 
-        // Positions
-        primitive.attributes.emplace("POSITION", static_cast<int>(model.accessors.size()));
-        auto& position_accessor = model.accessors.emplace_back();
-        position_accessor.bufferView = 1;
-        position_accessor.byteOffset = positions_buffer.data.size();
-        position_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-        position_accessor.count = 4;
-        position_accessor.type = TINYGLTF_TYPE_VEC3;
+        const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{1, 0, 0});
 
-        const auto min_x = glm::min(glm::min(face.vertices[0].position.x, face.vertices[1].position.x),
-                                    glm::min(face.vertices[2].position.x, face.vertices[3].position.x));
-        const auto min_y = glm::min(glm::min(face.vertices[0].position.y, face.vertices[1].position.y),
-                                    glm::min(face.vertices[2].position.y, face.vertices[3].position.y));
-        const auto min_z = glm::min(glm::min(face.vertices[0].position.z, face.vertices[1].position.z),
-                                    glm::min(face.vertices[2].position.z, face.vertices[3].position.z));
-        const auto max_x = glm::max(glm::max(face.vertices[0].position.x, face.vertices[1].position.x),
-                                    glm::max(face.vertices[2].position.x, face.vertices[3].position.x));
-        const auto max_y = glm::max(glm::max(face.vertices[0].position.y, face.vertices[1].position.y),
-                                    glm::max(face.vertices[2].position.y, face.vertices[3].position.y));
-        const auto max_z = glm::max(glm::max(face.vertices[0].position.z, face.vertices[1].position.z),
-                                    glm::max(face.vertices[2].position.z, face.vertices[3].position.z));
+        auto& node = model.nodes.emplace_back();
+        node.name = std::string{ name };
+        node.mesh = static_cast<int>(model.meshes.size());
+        node.rotation = { rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w };
+        node.scale = { 1, 1, 1 };
+        node.translation = { 0, 0, 0 };
 
-        position_accessor.minValues = { min_x, min_y, min_z };
-        position_accessor.maxValues = { max_x, max_y, max_z };
+        auto& mesh = model.meshes.emplace_back();
+        mesh.name = std::format( "{} Sector {}", name, model.meshes.size() - 1);
 
-        write_data_to_buffer<glm::vec3>(positions_buffer.data, std::array{
-                                            face.vertices[0].position,
-                                            face.vertices[1].position,
-                                            face.vertices[2].position,
-                                            face.vertices[3].position,
-                                        });
+        for (const auto& face : sector.faces)
+        {
+            auto& primitive = mesh.primitives.emplace_back();
+            primitive.mode = TINYGLTF_MODE_TRIANGLES;
 
-        // Normals
-        primitive.attributes.emplace("NORMAL", static_cast<int>(model.accessors.size()));
-        auto& normal_accessor = model.accessors.emplace_back();
-        normal_accessor.bufferView = 2;
-        normal_accessor.byteOffset = normals_buffer.data.size();
-        normal_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-        normal_accessor.count = 4;
-        normal_accessor.type = TINYGLTF_TYPE_VEC3;
+            // Positions
+            primitive.attributes.emplace("POSITION", static_cast<int>(model.accessors.size()));
+            auto& position_accessor = model.accessors.emplace_back();
+            position_accessor.bufferView = 1;
+            position_accessor.byteOffset = positions_buffer.data.size();
+            position_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+            position_accessor.count = 4;
+            position_accessor.type = TINYGLTF_TYPE_VEC3;
 
-        write_data_to_buffer<glm::vec3>(normals_buffer.data, std::array{
-                                            face.vertices[0].normal,
-                                            face.vertices[1].normal,
-                                            face.vertices[2].normal,
-                                            face.vertices[3].normal,
-                                        });
+            const auto min_x = glm::min(glm::min(face.vertices[0].position.x, face.vertices[1].position.x),
+                                        glm::min(face.vertices[2].position.x, face.vertices[3].position.x));
+            const auto min_y = glm::min(glm::min(face.vertices[0].position.y, face.vertices[1].position.y),
+                                        glm::min(face.vertices[2].position.y, face.vertices[3].position.y));
+            const auto min_z = glm::min(glm::min(face.vertices[0].position.z, face.vertices[1].position.z),
+                                        glm::min(face.vertices[2].position.z, face.vertices[3].position.z));
+            const auto max_x = glm::max(glm::max(face.vertices[0].position.x, face.vertices[1].position.x),
+                                        glm::max(face.vertices[2].position.x, face.vertices[3].position.x));
+            const auto max_y = glm::max(glm::max(face.vertices[0].position.y, face.vertices[1].position.y),
+                                        glm::max(face.vertices[2].position.y, face.vertices[3].position.y));
+            const auto max_z = glm::max(glm::max(face.vertices[0].position.z, face.vertices[1].position.z),
+                                        glm::max(face.vertices[2].position.z, face.vertices[3].position.z));
 
-        // Texcoords
-        primitive.attributes.emplace("TEXCOORD_0", static_cast<int>(model.accessors.size()));
-        auto& texcoord_accessor = model.accessors.emplace_back();
-        texcoord_accessor.bufferView = 3;
-        texcoord_accessor.byteOffset = texcoords_buffer.data.size();
-        texcoord_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-        texcoord_accessor.count = 4;
-        texcoord_accessor.type = TINYGLTF_TYPE_VEC2;
+            position_accessor.minValues = {min_x, min_y, min_z};
+            position_accessor.maxValues = {max_x, max_y, max_z};
 
-        write_data_to_buffer<glm::vec2>(texcoords_buffer.data, std::array{
-                                            face.vertices[0].texcoord,
-                                            face.vertices[1].texcoord,
-                                            face.vertices[2].texcoord,
-                                            face.vertices[3].texcoord,
-                                        });
+            write_data_to_buffer<glm::vec3>(positions_buffer.data, std::array{
+                                                face.vertices[0].position,
+                                                face.vertices[1].position,
+                                                face.vertices[2].position,
+                                                face.vertices[3].position,
+                                            });
 
-        // Indices
-        primitive.indices = static_cast<int>(model.accessors.size());
-        auto& indices_accessor = model.accessors.emplace_back();
-        indices_accessor.bufferView = 0;
-        indices_accessor.byteOffset = indices_buffer.data.size();
-        indices_accessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
-        indices_accessor.count = 6;
-        indices_accessor.type = TINYGLTF_TYPE_SCALAR;
+            // Normals
+            primitive.attributes.emplace("NORMAL", static_cast<int>(model.accessors.size()));
+            auto& normal_accessor = model.accessors.emplace_back();
+            normal_accessor.bufferView = 2;
+            normal_accessor.byteOffset = normals_buffer.data.size();
+            normal_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+            normal_accessor.count = 4;
+            normal_accessor.type = TINYGLTF_TYPE_VEC3;
 
-        // 0 1 2 3 2 1
-        // Same for all faces
-        write_data_to_buffer<uint32_t>(indices_buffer.data, std::array{0u, 1u, 2u, 3u, 2u, 1u});
+            write_data_to_buffer<glm::vec3>(normals_buffer.data, std::array{
+                                                face.vertices[0].normal,
+                                                face.vertices[1].normal,
+                                                face.vertices[2].normal,
+                                                face.vertices[3].normal,
+                                            });
+
+            // Texcoords
+            primitive.attributes.emplace("TEXCOORD_0", static_cast<int>(model.accessors.size()));
+            auto& texcoord_accessor = model.accessors.emplace_back();
+            texcoord_accessor.bufferView = 3;
+            texcoord_accessor.byteOffset = texcoords_buffer.data.size();
+            texcoord_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+            texcoord_accessor.count = 4;
+            texcoord_accessor.type = TINYGLTF_TYPE_VEC2;
+
+            write_data_to_buffer<glm::vec2>(texcoords_buffer.data, std::array{
+                                                face.vertices[0].texcoord,
+                                                face.vertices[1].texcoord,
+                                                face.vertices[2].texcoord,
+                                                face.vertices[3].texcoord,
+                                            });
+
+            // Indices
+            primitive.indices = static_cast<int>(model.accessors.size());
+            auto& indices_accessor = model.accessors.emplace_back();
+            indices_accessor.bufferView = 0;
+            indices_accessor.byteOffset = indices_buffer.data.size();
+            indices_accessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
+            indices_accessor.count = 6;
+            indices_accessor.type = TINYGLTF_TYPE_SCALAR;
+
+            // 0 1 2 3 2 1
+            // Same for all faces
+            write_data_to_buffer<uint32_t>(indices_buffer.data, std::array{0u, 1u, 2u, 3u, 2u, 1u});
+        }
     }
 
     auto& indices_buffer_view = model.bufferViews.emplace_back();

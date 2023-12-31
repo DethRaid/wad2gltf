@@ -5,7 +5,7 @@
 
 #include "wad.hpp"
 
-void validate_lump_name(const LumpInfo& lump, const std::string_view name)
+void validate_lump_name(const wad::LumpInfo& lump, const std::string_view name)
 {
     if (memcmp(lump.name, name.data(), name.size()) != 0)
     {
@@ -15,23 +15,9 @@ void validate_lump_name(const LumpInfo& lump, const std::string_view name)
     }
 }
 
-template <typename LumpDataType>
-std::span<const LumpDataType> get_lump_data(const uint8_t* data_ptr, const LumpInfo& lump)
+std::vector<Sector> create_mesh_from_map(const wad::WAD& wad, std::string_view map_name)
 {
-    const auto* lump_data_ptr = reinterpret_cast<const LumpDataType*>(data_ptr + lump.filepos);
-    return std::span{lump_data_ptr, static_cast<size_t>(lump.size) / sizeof(LumpDataType)};
-}
-
-std::vector<Face> create_mesh_from_map(const WAD& wad, std::string_view map_name)
-{
-    auto itr = std::ranges::find_if(wad.lump_directory, [&](const LumpInfo& lump)
-    {
-        return memcmp(lump.name, map_name.data(), map_name.size()) == 0;
-    });
-    if (itr == wad.lump_directory.end())
-    {
-        throw std::runtime_error{std::format("Could not find requested map {}", map_name)};
-    }
+    auto itr = wad.find_lump(map_name);
 
     std::cout << "Map lump " << itr->name << " Offset=" << itr->filepos << " Size=" << itr->size << "\n";
 
@@ -70,10 +56,10 @@ std::vector<Face> create_mesh_from_map(const WAD& wad, std::string_view map_name
 
     const auto* data_ptr = wad.raw_data.data();
 
-    const auto linedefs = get_lump_data<LineDef>(data_ptr, *linedefs_itr);
-    const auto sidedefs = get_lump_data<SideDef>(data_ptr, *sidedefs_itr);
-    const auto vertexes = get_lump_data<Vertex>(data_ptr, *vertexes_itr);
-    const auto sectors = get_lump_data<Sector>(data_ptr, *sectors_itr);
+    const auto linedefs = wad.get_lump_data<wad::LineDef>(*linedefs_itr);
+    const auto sidedefs = wad.get_lump_data<wad::SideDef>(*sidedefs_itr);
+    const auto vertexes = wad.get_lump_data<wad::Vertex>(*vertexes_itr);
+    const auto sectors = wad.get_lump_data<wad::Sector>(*sectors_itr);
 
     /*
      * So... how to make a mesh from all this?
@@ -96,11 +82,9 @@ std::vector<Face> create_mesh_from_map(const WAD& wad, std::string_view map_name
      * not be closed. Then, we have to triangulate the arbitrary polygon formed by the sidedefs.
      * That'll probably be a task for when I'm back home
      */
-
-    auto faces = std::vector<Face>{};
-    faces.reserve(linedefs.size() * 2);
-
-    // TODO: Group faces by sector?
+    
+    auto output_sectors = std::vector<Sector>{};
+    output_sectors.resize(sectors.size());
 
     for (const auto& linedef : linedefs)
     {
@@ -121,24 +105,25 @@ std::vector<Face> create_mesh_from_map(const WAD& wad, std::string_view map_name
             const auto v1 = glm::normalize(position2 - position1);
             const auto normal = glm::cross(v0, v1);
 
+            auto& faces = output_sectors[side.sector_number].faces;
             auto& face = faces.emplace_back();
             face.vertices = std::array{
-                FaceVertex{
+                Vertex{
                     .position = position0,
                     .normal = normal,
                     .texcoord = {}
                 },
-                FaceVertex{
+                Vertex{
                     .position = position1,
                     .normal = normal,
                     .texcoord = {}
                 },
-                FaceVertex{
+                Vertex{
                     .position = position2,
                     .normal = normal,
                     .texcoord = {}
                 },
-                FaceVertex{
+                Vertex{
                     .position = position3,
                     .normal = normal,
                     .texcoord = {}
@@ -161,24 +146,25 @@ std::vector<Face> create_mesh_from_map(const WAD& wad, std::string_view map_name
             const auto v1 = glm::normalize(position2 - position1);
             const auto normal = glm::cross(v0, v1);
 
+            auto& faces = output_sectors[sidedef.sector_number].faces;
             auto& face = faces.emplace_back();
             face.vertices = std::array{
-                FaceVertex{
+                Vertex{
                     .position = position0,
                     .normal = normal,
                     .texcoord = {}
                 },
-                FaceVertex{
+                Vertex{
                     .position = position1,
                     .normal = normal,
                     .texcoord = {}
                 },
-                FaceVertex{
+                Vertex{
                     .position = position2,
                     .normal = normal,
                     .texcoord = {}
                 },
-                FaceVertex{
+                Vertex{
                     .position = position3,
                     .normal = normal,
                     .texcoord = {}
@@ -187,5 +173,5 @@ std::vector<Face> create_mesh_from_map(const WAD& wad, std::string_view map_name
         }
     }
 
-    return faces;
+    return output_sectors;
 }

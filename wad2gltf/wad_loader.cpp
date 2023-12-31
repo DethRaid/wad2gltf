@@ -38,9 +38,9 @@ int32_t read_int(const uint8_t* read_ptr)
     return value;
 }
 
-LumpInfo load_lump(const uint8_t* lump_start)
+wad::LumpInfo load_lump(const uint8_t* lump_start)
 {
-    auto lump = LumpInfo{};
+    auto lump = wad::LumpInfo{};
 
     lump.filepos = *reinterpret_cast<const int32_t*>(lump_start);
     lump.size = *reinterpret_cast<const int32_t*>(lump_start + 4);
@@ -49,7 +49,7 @@ LumpInfo load_lump(const uint8_t* lump_start)
     return lump;
 }
 
-WAD load_wad_file(const std::filesystem::path& wad_path)
+wad::WAD load_wad_file(const std::filesystem::path& wad_path)
 {
     if(!exists(wad_path))
     {
@@ -63,13 +63,13 @@ WAD load_wad_file(const std::filesystem::path& wad_path)
         throw std::runtime_error{ "Could not read WAD file" };
     }
 
-    auto wad = WAD{};
+    auto wad = wad::WAD{};
     wad.raw_data = std::move(*wad_data);
 
     auto* wad_data_ptr = wad.raw_data.data();
 
-    wad.header = reinterpret_cast<WadHeader*>(wad_data_ptr);
-    auto* lump_directory_ptr = reinterpret_cast<LumpInfo*>(wad_data_ptr + wad.header->infotableofs);
+    wad.header = reinterpret_cast<wad::Header*>(wad_data_ptr);
+    auto* lump_directory_ptr = reinterpret_cast<wad::LumpInfo*>(wad_data_ptr + wad.header->infotableofs);
     wad.lump_directory = std::span{ lump_directory_ptr, lump_directory_ptr + wad.header->numlumps };
     
     return wad;
