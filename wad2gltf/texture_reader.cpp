@@ -1,6 +1,7 @@
 #include "texture_reader.hpp"
 
 #include <iostream>
+#include <stb_image_write.h>
 #include <unordered_map>
 
 #include "wad.hpp"
@@ -26,12 +27,6 @@ DecodedPatch get_patch(const wad::Name& patch_name, const wad::WAD& wad) {
 
     auto patch_pixels = std::vector<uint8_t>{};
     patch_pixels.resize(patch->width * patch->height, 0xFF); // 0xFF is transparent in the DOOM palettes
-
-    auto column_array = std::vector<uint32_t>{};
-    column_array.resize(patch->width);
-    for (auto i = 0; i < patch->width; i++) {
-        column_array[i] = column_offsets[i];
-    }
 
     for (auto i = 0; i < patch->width; i++) {
         auto* read_ptr = patch_ptr + column_offsets[i];
@@ -59,18 +54,11 @@ DecodedPatch get_patch(const wad::Name& patch_name, const wad::WAD& wad) {
             // More padding
             read_ptr++;
         } while (*read_ptr != 255);
-
-        // const auto* post = reinterpret_cast<const wad::Post*>(patch_ptr + column_offsets[i]);
-        // while (post->row != 255) {
-        //     const auto* post_pixels = &post->data_start;
-        //     for (auto j = 0; j < post->height; j++) {
-        //         const auto x = j + post->row;
-        //         const auto y = i;
-        //         patch_pixels[x + y * patch->width] = post_pixels[i];
-        //     }
-        //     post++;
-        // }
     }
+
+    const auto filename = std::format("textures/patches/{}.png", patch_name);
+    stbi_write_png(filename.c_str(), patch->width, patch->height, 1, patch_pixels.data(), 0);
+
 
     const auto itr = patch_cache.emplace(
         patch_name, DecodedPatch{.header = *patch, .pixel_data = std::move(patch_pixels)}

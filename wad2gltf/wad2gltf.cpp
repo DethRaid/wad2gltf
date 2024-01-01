@@ -92,7 +92,7 @@ map, and one Mesh Primitive for each sector.)"
             const auto image_file = images_folder / std::format("{}.png", texture.info.name.to_string());
             const auto image_file_string = image_file.string();
             const auto write_result = stbi_write_png(
-                image_file_string.c_str(), texture.info.width, texture.info.height, 1, texture.pixels.data(), sizeof(uint8_t)
+                image_file_string.c_str(), texture.info.width, texture.info.height, 1, texture.pixels.data(), 0
             );
             if (write_result != 1) {
                 throw std::runtime_error{ std::format("Could not write image {}", image_file_string) };
