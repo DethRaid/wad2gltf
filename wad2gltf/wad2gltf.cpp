@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <string>
 #include <ranges>
+#include <stb_image_write.h>
 
 #include <CLI/CLI.hpp>
 
@@ -13,6 +14,7 @@
 #include "map_reader.hpp"
 #include "texture_reader.hpp"
 #include "wad_loader.hpp"
+#include "fastgltf/core.hpp"
 
 /*
  * TODO: Real command-line parsing
@@ -73,19 +75,28 @@ map, and one Mesh Primitive for each sector.)"
         const auto gltf_map = export_to_gltf(map_to_extract, map);
         std::print(std::cout, "Generated glTF data\n");
 
-        tinygltf::TinyGLTF gltf;
-        const auto success = gltf.WriteGltfSceneToFile(
-            &gltf_map, output_file.string(),
-            false, // embedImages
-            false, // embedBuffers
-            true, // pretty print
-            false
-        );
+        auto exporter = fastgltf::FileExporter{};
+        exporter.setImagePath("textures");
 
-        if(!success) {
-            std::print(std::cout, "Could not write glTF file for some reason\n");
+        const auto result = exporter.writeGLTF(gltf_map, output_file);
+
+        if(result != fastgltf::Error::None) {
+            std::print(std::cout, "Could not write glTF file: {}\n", fastgltf::getErrorMessage(result));
         } else {
             std::print(std::cout, "Wrote glTF to file {}\n", output_file.string());
+        }
+
+        const auto images_folder = output_file.parent_path() / "textures";
+        std::filesystem::create_directories(images_folder);
+        for(const auto& texture : map.textures) {
+            const auto image_file = images_folder / std::format("{}.png", texture.info.name.to_string());
+            const auto image_file_string = image_file.string();
+            const auto write_result = stbi_write_png(
+                image_file_string.c_str(), texture.info.width, texture.info.height, 1, texture.pixels.data(), sizeof(uint8_t)
+            );
+            if (write_result != 1) {
+                throw std::runtime_error{ std::format("Could not write image {}", image_file_string) };
+            }
         }
 
     } catch (const std::exception& e) {

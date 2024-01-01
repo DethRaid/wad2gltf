@@ -8,18 +8,18 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
+    fastgltf
+    GIT_REPOSITORY  https://github.com/spnda/fastgltf.git
+    GIT_TAG         gltf_composing
+)
+
+FetchContent_Declare(
     glm
     GIT_REPOSITORY  https://github.com/g-truc/glm.git
     GIT_TAG         7882684a2cd69005fb57001c17a332899621e2be
 )
 
-FetchContent_Declare(
-    tinygltf
-    GIT_REPOSITORY  https://github.com/syoyo/tinygltf.git
-    GIT_TAG         v2.8.19
-)
-
-FetchContent_MakeAvailable(cli11 glm tinygltf)
+FetchContent_MakeAvailable(cli11 fastgltf glm)
 
 # STB
 FetchContent_Declare(
@@ -47,9 +47,9 @@ file(GLOB_RECURSE WAD2GLTF_SOURCE CONFIGURE_DEPENDS
 add_executable (wad2gltf ${WAD2GLTF_SOURCE})
 target_link_libraries(wad2gltf PUBLIC
     CLI11::CLI11
+    fastgltf
     glm
     stb
-    tinygltf
 )
 
 # TODO: Add tests and install targets if needed.
