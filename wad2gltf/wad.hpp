@@ -7,6 +7,11 @@
 #include <stdexcept>
 
 namespace wad {
+    struct Name
+    {
+        char val[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    };
+
     struct Header
     {
         /**
@@ -223,5 +228,50 @@ namespace wad {
          * variable-length array that's difficult to express statically
          */
         MapPatch patches_array_start;
+    };
+
+    struct PatchHeader
+    {
+        /**
+         * Width of the patch
+         */
+        uint16_t width = 0;
+        /**
+         * Height of the patch
+         */
+        uint16_t height = 0;
+        /**
+         * Horizontal offset of the patch, to the left of the origin
+         *
+         * MapPatch has an offset, why is there one here too?
+         */
+        int16_t offset_x = 0;
+        /**
+         * Vertical offset of the patch, below the origin
+         *
+         * MapPatch has an offset... why is there one here too?
+         */
+        int16_t offset_y = 0;
+
+        /**
+         * Start of the array of offsets to the column data. There are `width` columns. The offsets are relative to the
+         * start of the patch header
+         */
+        uint32_t column_offsets_start = 0;
+    };
+
+    struct Post
+    {
+        uint8_t top_delta = 0;
+        uint8_t length = 0;
+        uint8_t unused = 0;
+        uint8_t data_start;
+        // There's another byte of padding at the end, allegedly to prevent overflow (?)
+    };
+
+    struct PatchColumn
+    {
+        // There's an unknown number of posts in the column. We read them until we get a post with a top_delta of 0xFF
+        Post post_start;
     };
 }
