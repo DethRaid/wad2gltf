@@ -4,16 +4,13 @@
 #include <string_view>
 
 #include "mesh.hpp"
+#include "wad.hpp"
 
 /**
  * \file map_reader.hpp
  *
  * Contains utilities to create a mesh from a WAD map
  */
-
-namespace wad {
-    struct WAD;
-}
 
 /**
  * Creates a mesh from a map in the WAD data
@@ -26,4 +23,4 @@ namespace wad {
  *
  * TODO: More options, such as trying to combine faces that use the same texture
  */
-std::vector<Sector> create_mesh_from_map(const wad::WAD& wad, std::string_view map_name);
+Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name);

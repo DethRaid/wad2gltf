@@ -1,54 +1,141 @@
 #include "texture_reader.hpp"
 
+#include <iostream>
+#include <unordered_map>
+
 #include "wad.hpp"
 
-void load_texture_from_wad(const std::string_view texture_name, const wad::WAD& wad)
-{
+struct DecodedPatch {
+    wad::PatchHeader header;
+    std::vector<uint8_t> pixel_data;
+};
+
+static std::unordered_map<wad::Name, DecodedPatch> patch_cache;
+
+DecodedPatch get_patch(const wad::Name& patch_name, const wad::WAD& wad) {
+    std::print(std::cout, "Retrieving patch {}\n", patch_name);
+
+    const auto patch_itr = wad.find_lump(patch_name);
+    const auto* patch_ptr = wad.raw_data.data() + patch_itr->filepos;
+    const auto* patch = reinterpret_cast<const wad::PatchHeader*>(patch_ptr);
+    const auto* column_offsets = &patch->column_offsets_start;
+
+    if (const auto itr = patch_cache.find(patch_name); itr != patch_cache.end()) {
+        return itr->second;
+    }
+
+    auto patch_pixels = std::vector<uint8_t>{};
+    patch_pixels.resize(patch->width * patch->height, 0xFF); // 0xFF is transparent in the DOOM palettes
+
+    auto column_array = std::vector<uint32_t>{};
+    column_array.resize(patch->width);
+    for (auto i = 0; i < patch->width; i++) {
+        column_array[i] = column_offsets[i];
+    }
+
+    for (auto i = 0; i < patch->width; i++) {
+        auto* read_ptr = patch_ptr + column_offsets[i];
+
+        do {
+            const auto post_row = *read_ptr;
+            read_ptr++;
+            const auto post_height = *read_ptr;
+            read_ptr++;
+
+            // Padding
+            read_ptr++;
+
+            for (auto j = 0; j < post_height; j++) {
+                const auto x = j + post_row;
+                const auto y = i;
+                if(x >= patch->width || y >= patch->height) {
+                    read_ptr++;
+                    continue;
+                }
+                patch_pixels[x + y * patch->width] = *read_ptr;
+                read_ptr++;
+            }
+
+            // More padding
+            read_ptr++;
+        } while (*read_ptr != 255);
+
+        // const auto* post = reinterpret_cast<const wad::Post*>(patch_ptr + column_offsets[i]);
+        // while (post->row != 255) {
+        //     const auto* post_pixels = &post->data_start;
+        //     for (auto j = 0; j < post->height; j++) {
+        //         const auto x = j + post->row;
+        //         const auto y = i;
+        //         patch_pixels[x + y * patch->width] = post_pixels[i];
+        //     }
+        //     post++;
+        // }
+    }
+
+    const auto itr = patch_cache.emplace(
+        patch_name, DecodedPatch{.header = *patch, .pixel_data = std::move(patch_pixels)}
+    );
+    return itr.first->second;
+}
+
+DecodedMapTexture load_texture_from_wad(const wad::Name& texture_name, const wad::WAD& wad) {
+    std::print(std::cout, "Loading map texture {}\n", texture_name);
     const auto texture1_itr = wad.find_lump("TEXTURE1");
 
     const auto* texture1_ptr = wad.raw_data.data() + texture1_itr->filepos;
     const auto* texture1 = reinterpret_cast<const wad::Texture1*>(texture1_ptr);
 
     const auto* map_textures_offsets = &texture1->offset_array_start;
-    const auto* map_textures_ptr = texture1_ptr + (texture1->numtextures + 1) * sizeof(uint32_t);
 
     const wad::MapTexture* map_texture = nullptr;
     // Figure out where the requested texture is
-    for(auto i = 0; i < texture1->numtextures; i++)
-    {
+    for (auto i = 0u; i < texture1->numtextures; i++) {
         const auto offset = map_textures_offsets[i];
-        const auto* test_texture = reinterpret_cast<const wad::MapTexture*>(map_textures_ptr + offset);
-        if(memcmp(test_texture->name, texture_name.data(), texture_name.size()) == 0)
-        {
+        const auto* test_texture = reinterpret_cast<const wad::MapTexture*>(texture1_ptr + offset);
+        if (test_texture->name == texture_name) {
             map_texture = test_texture;
             break;
         }
     }
 
-    if(map_texture == nullptr)
-    {
-        throw std::runtime_error{ std::format("Could not find requested texture {}", texture_name) };
+    if (map_texture == nullptr) {
+        throw std::runtime_error{std::format("Could not find requested texture {}", texture_name)};
     }
 
-    auto paletted_pixels = std::vector<uint8_t>{};
-    paletted_pixels.resize(map_texture->width * map_texture->height);
+    auto pixels = std::vector<uint8_t>{};
+    pixels.resize(map_texture->width * map_texture->height, 0xFF); // 0xFF is transparent in the DOOM palettes
 
     const auto patch_names_itr = wad.find_lump("PNAMES");
     auto* patch_names_ptr = wad.raw_data.data() + patch_names_itr->filepos;
     const auto num_patches = *reinterpret_cast<const uint32_t*>(patch_names_ptr);
     patch_names_ptr += sizeof(uint32_t);
 
-    const auto patch_names = std::span{ reinterpret_cast<const wad::Name*>(patch_names_ptr), num_patches };
+    const auto patch_names = std::span{reinterpret_cast<const wad::Name*>(patch_names_ptr), num_patches};
 
     const auto* patches = &map_texture->patches_array_start;
-    for(auto i = 0; i < map_texture->patchcount; i++)
-    {
-        const auto& map_patch = patches[i];
+    for (auto patch_index = 0; patch_index < map_texture->patchcount; patch_index++) {
+        const auto& map_patch = patches[patch_index];
         const auto& patch_name = patch_names[map_patch.patch];
-        const auto patch_itr = wad.find_lump(patch_name.val);
-        const auto* patch_ptr = wad.raw_data.data() + patch_itr->filepos;
-        const auto* patch = reinterpret_cast<const wad::PatchHeader*>(patch_ptr);
-        const auto* column_offsets = &patch->column_offsets_start;
 
+        const auto patch = get_patch(patch_name, wad);
+
+        // Copy patch data to the map texture
+        for (auto patch_y = 0; patch_y < patch.header.height; patch_y++) {
+            for (auto patch_x = 0; patch_x < patch.header.width; patch_x++) {
+                const auto x = map_patch.origin_x + patch_x;
+                const auto y = map_patch.origin_y + patch_y;
+
+                if(x < 0 || y < 0 || x >= map_texture->width || y >= map_texture->height) {
+                    // Possibly?
+                    continue;
+                }
+
+                const auto read_idx = patch_x + patch_y * patch.header.width;
+                const auto write_idx = x + y * map_texture->width;
+                pixels[write_idx] = patch.pixel_data[read_idx];
+            }
+        }
     }
+
+    return DecodedMapTexture{.info = *map_texture, .pixels = std::move(pixels)};
 }

@@ -1,19 +1,50 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <format>
 #include <vector>
 #include <span>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace wad {
-    struct Name
-    {
+    struct Name {
         char val[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+        bool operator==(std::string_view str) const;
+
+        bool operator==(const Name& other) const;
+
+        std::string to_string() const;
     };
 
-    struct Header
-    {
+    inline bool Name::operator==(const std::string_view str) const {
+        return memcmp(val, str.data(), std::min(str.size(), 8ull)) == 0;
+    }
+
+    inline bool Name::operator==(const Name& other) const {
+        for(auto i = 0; i < 8; i++) {
+            if (val[i] != other.val[i]) {
+                return false;
+            }
+
+            if(val[i] == other.val[i] && val[i] == '\0') {
+                // We've iterated to the end of the string, and we've reached the null terminator. The names are equal
+                return true;
+            }
+        }
+
+        // We reached the end of the string without finding different characters. These are both eight-character names
+        return true;
+    }
+
+    inline std::string Name::to_string() const {
+        const auto length = strnlen_s(val, 8);
+        return std::string{ val, length };
+    }
+
+    struct Header {
         /**
          * Identifier for the file. Must be either PWAD or IWAD
          */
@@ -28,8 +59,7 @@ namespace wad {
         int32_t infotableofs = 0;
     };
 
-    struct LumpInfo
-    {
+    struct LumpInfo {
         /**
          * Byte offset of the lump's data in the file
          */
@@ -43,7 +73,7 @@ namespace wad {
         /**
          * Name of the lump, hopefully null-terminated
          */
-        char name[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        Name name;
     };
 
     /**
@@ -56,8 +86,7 @@ namespace wad {
      * All the pointers in this data structure refer to the raw data vector. Thus, copying this data
      * structure is not allowed. Maybe one day I'll write a good copy constructor/operator
      */
-    struct WAD
-    {
+    struct WAD {
         Header* header = nullptr;
 
         std::span<LumpInfo> lump_directory;
@@ -75,36 +104,33 @@ namespace wad {
         WAD(WAD&& old) noexcept = default;
         WAD& operator=(WAD&& old) noexcept = default;
 
-        auto find_lump(const std::string_view lump_name) const
-        {
-            const auto itr = std::ranges::find_if(lump_directory, [&](const wad::LumpInfo& lump)
-            {
-                return memcmp(lump.name, lump_name.data(), lump_name.size()) == 0;
-            });
-            if (itr == lump_directory.end())
-            {
-                throw std::runtime_error{ std::format("Could not find requested map {}", lump_name) };
+        template<typename NameType>
+        auto find_lump(const NameType& lump_name) const {
+            const auto itr = std::ranges::find_if(
+                lump_directory, [&](const LumpInfo& lump) {
+                    return lump.name == lump_name;
+                }
+            );
+            if (itr == lump_directory.end()) {
+                throw std::runtime_error{std::format("Could not find requested map {}", lump_name)};
             }
 
             return itr;
         }
 
         template <typename LumpDataType>
-        std::span<const LumpDataType> get_lump_data(const wad::LumpInfo& lump) const
-        {
+        std::span<const LumpDataType> get_lump_data(const LumpInfo& lump) const {
             const auto* lump_data_ptr = reinterpret_cast<const LumpDataType*>(raw_data.data() + lump.filepos);
-            return std::span{ lump_data_ptr, static_cast<size_t>(lump.size) / sizeof(LumpDataType) };
+            return std::span{lump_data_ptr, static_cast<size_t>(lump.size) / sizeof(LumpDataType)};
         }
     };
 
-    struct Vertex
-    {
+    struct Vertex {
         int16_t x = 0;
         int16_t y = 0;
     };
 
-    struct LineDef
-    {
+    struct LineDef {
         uint16_t start_vertex = 0;
         uint16_t end_vertex = 0;
         int16_t flags = 0;
@@ -114,29 +140,26 @@ namespace wad {
         int16_t back_sidedef = 0;
     };
 
-    struct SideDef
-    {
+    struct SideDef {
         int16_t x_offset = 0;
         int16_t y_offset = 0;
-        char upper_texture_name[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        char lower_texture_name[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-        char middle_texture_name[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        Name upper_texture_name;
+        Name lower_texture_name;
+        Name middle_texture_name;
         int16_t sector_number = 0;
     };
 
-    struct Sector
-    {
+    struct Sector {
         int16_t floor_height = 0;
         int16_t ceiling_height = 0;
-        char floor_texture[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-        char ceiling_texture[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        Name floor_texture;
+        Name ceiling_texture;
         int16_t light_level = 0;
         int16_t special_type = 0;
         int16_t tag_number = 0;
     };
 
-    struct Texture1
-    {
+    struct Texture1 {
         /**
          * Number of textures in this lump
          */
@@ -163,8 +186,7 @@ namespace wad {
     /**
      * Struct defining how to place a patch inside a texture
      */
-    struct MapPatch
-    {
+    struct MapPatch {
         /**
          * Offset of the patch relative to the upper-left of the texture
          */
@@ -191,12 +213,11 @@ namespace wad {
         int16_t colormap = 0;
     };
 
-    struct MapTexture
-    {
+    struct MapTexture {
         /**
          * Name of this map texture
          */
-        char name[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        Name name;
 
         /**
          * Defines if the texture is masked? DOOM Wiki implies this isn't used
@@ -230,8 +251,7 @@ namespace wad {
         MapPatch patches_array_start;
     };
 
-    struct PatchHeader
-    {
+    struct PatchHeader {
         /**
          * Width of the patch
          */
@@ -260,18 +280,32 @@ namespace wad {
         uint32_t column_offsets_start = 0;
     };
 
-    struct Post
-    {
-        uint8_t top_delta = 0;
-        uint8_t length = 0;
+    struct Post {
+        uint8_t row = 0;
+        uint8_t height = 0;
         uint8_t unused = 0;
         uint8_t data_start;
         // There's another byte of padding at the end, allegedly to prevent overflow (?)
     };
 
-    struct PatchColumn
-    {
-        // There's an unknown number of posts in the column. We read them until we get a post with a top_delta of 0xFF
+    struct PatchColumn {
+        // There's an unknown number of posts in the column. We read them until we get a post with a row of 0xFF
         Post post_start;
     };
 }
+
+template <>
+struct std::formatter<wad::Name> : std::formatter<std::string> {
+    auto format(const wad::Name& name, format_context& ctx) const {
+        const auto length = strnlen_s(name.val, 8);
+        const auto view = std::string_view{ name.val, length };
+        return formatter<string>::format(std::format("{}", view), ctx);
+    }
+};
+
+template <>
+struct std::hash<wad::Name> {
+    std::size_t operator()(const wad::Name& name) const noexcept {
+        return std::hash<std::string>{}(name.to_string());
+    }
+};

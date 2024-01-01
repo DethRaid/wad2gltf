@@ -16,7 +16,7 @@ void write_data_to_buffer(std::vector<uint8_t>& buffer, const std::span<const Da
     std::memcpy(dest_ptr, data.data(), num_bytes);
 }
 
-tinygltf::Model export_to_gltf(const std::string_view name, const std::span<const Sector> sectors)
+tinygltf::Model export_to_gltf(const std::string_view name, const Map& map)
 {
     auto model = tinygltf::Model{};
     model.defaultScene = 0;
@@ -24,6 +24,34 @@ tinygltf::Model export_to_gltf(const std::string_view name, const std::span<cons
 
     auto& scene = model.scenes.emplace_back();
     scene.name = std::string{name};
+
+    auto& sampler = model.samplers.emplace_back();
+    sampler.magFilter = TINYGLTF_TEXTURE_FILTER_NEAREST;
+    sampler.minFilter = TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST;
+
+    // Create materials for all the map textures. We'll shrimply create a non-PBR material for each one
+    for(const auto& texture : map.textures) {
+        auto& gltf_material = model.materials.emplace_back();
+        gltf_material.name = texture.info.name.to_string();
+        // TODO: Use masked alpha for images with transparency
+        gltf_material.pbrMetallicRoughness.baseColorFactor = { 1, 1, 1, 1 };
+        gltf_material.pbrMetallicRoughness.baseColorTexture.index = static_cast<int>(model.textures.size());
+
+        auto& gltf_texture = model.textures.emplace_back();
+        gltf_texture.name = gltf_material.name;
+        gltf_texture.sampler = 0;   // We'll all use a point-filtered wrapping sampler
+        gltf_texture.source = static_cast<int>(model.images.size());
+
+        auto& gltf_image = model.images.emplace_back();
+        gltf_image.name = gltf_material.name;
+        gltf_image.width = texture.info.width;
+        gltf_image.height = texture.info.height;
+        gltf_image.component = 1;   // One component for now, we'll deal with palettes later
+        gltf_image.bits = 8;
+        gltf_image.pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+        gltf_image.image = texture.pixels;
+        gltf_image.mimeType = "image/png";
+    }
 
     // Buffers for all the attributes, hopefully in a format that's easy to mutate
     model.buffers.resize(4);
@@ -48,9 +76,9 @@ tinygltf::Model export_to_gltf(const std::string_view name, const std::span<cons
     // buffer, so we need to know the final size of the buffer
     // The views will be in the same order as the buffers, so we can construct the accessors
 
-    for (const auto& sector : sectors)
+    for (const auto& sector : map.sectors)
     {
-        scene.nodes.emplace_back(model.nodes.size());
+        scene.nodes.emplace_back(static_cast<int>(model.nodes.size()));
 
         const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{1, 0, 0});
 
@@ -145,6 +173,10 @@ tinygltf::Model export_to_gltf(const std::string_view name, const std::span<cons
             // 0 1 2 3 2 1
             // Same for all faces
             write_data_to_buffer<uint32_t>(indices_buffer.data, std::array{0u, 1u, 2u, 3u, 2u, 1u});
+
+            // Material. We create one material for each unique MapTexture, so there's a 1:1 relationship between
+            // MapTexture indices and material indices
+            primitive.material = static_cast<int>(face.texture_index);
         }
     }
 

@@ -24,31 +24,6 @@ std::optional<std::vector<uint8_t>> read_binary_file(const std::filesystem::path
     return file_content;
 }
 
-int32_t read_int(const uint8_t* read_ptr)
-{
-    auto value = int32_t{};
-    value |= *read_ptr << 24;
-    read_ptr++;
-    value |= (*read_ptr) << 16;
-    read_ptr++;
-    value |= (*read_ptr) << 8;
-    read_ptr++;
-    value |= (*read_ptr);
-
-    return value;
-}
-
-wad::LumpInfo load_lump(const uint8_t* lump_start)
-{
-    auto lump = wad::LumpInfo{};
-
-    lump.filepos = *reinterpret_cast<const int32_t*>(lump_start);
-    lump.size = *reinterpret_cast<const int32_t*>(lump_start + 4);
-    memcpy(lump.name, lump_start + 8, 8);
-
-    return lump;
-}
-
 wad::WAD load_wad_file(const std::filesystem::path& wad_path)
 {
     if(!exists(wad_path))
