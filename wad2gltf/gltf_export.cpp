@@ -166,8 +166,6 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
 
             // Texcoords
 
-            TODO: Divide the texture coordinates by the texture size to get nice UVs for modern graphics
-
             primitive.attributes.emplace_back("TEXCOORD_0", model.accessors.size());
             auto& texcoord_accessor = model.accessors.emplace_back();
             texcoord_accessor.bufferViewIndex = 3;

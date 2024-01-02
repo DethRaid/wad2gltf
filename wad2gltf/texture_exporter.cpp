@@ -34,7 +34,7 @@ void export_texture(const DecodedTexture& texture, const std::filesystem::path& 
     const auto image_file = output_folder / std::format("{}.png", texture.name.to_string());
     const auto image_file_string = image_file.string();
     const auto write_result = stbi_write_png(
-        image_file_string.c_str(), texture.width, texture.height, 4, pixels.data(), 0
+        image_file_string.c_str(), texture.size.x, texture.size.y, 4, pixels.data(), 0
     );
     if (write_result != 1) {
         throw std::runtime_error{ std::format("Could not write image {}", image_file_string) };

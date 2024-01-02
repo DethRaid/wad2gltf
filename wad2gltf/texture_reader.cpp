@@ -151,7 +151,7 @@ DecodedTexture load_texture_from_wad(const wad::Name& texture_name, const wad::W
     }
 
     return DecodedTexture{
-        .name = map_texture->name, .width = map_texture->width, .height = map_texture->height,
+        .name = map_texture->name, .size = glm::u16vec2{map_texture->width, map_texture->height},
         .pixels = std::move(pixels), .alpha_mask = std::move(transparency)
     };
 }

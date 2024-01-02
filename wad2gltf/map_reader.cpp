@@ -54,6 +54,34 @@ Face create_face(
     return face;
 }
 
+void emit_face(
+    const wad::Vertex& v0, const wad::Vertex& v1, const int16_t bottom, const int16_t top,
+    const wad::Name& texture_name, const glm::i16vec2& texture_offset, const float pegged_height,
+    std::vector<Face>& destination, const wad::WAD& wad,
+    Map& map
+) {
+    auto face = create_face(v0, v1, bottom, top);
+    face.texture_index = map.get_texture_index(texture_name, wad);
+
+    const auto line_length = glm::distance(
+        glm::vec2{v0.x, v0.y}, glm::vec2{v1.x, v1.y}
+    );
+
+    face.vertices[0].texcoord = glm::vec2{0, pegged_height - face.vertices[0].position.z};
+    face.vertices[1].texcoord = glm::vec2{line_length, pegged_height - face.vertices[1].position.z};
+    face.vertices[2].texcoord = glm::vec2{0, pegged_height - face.vertices[2].position.z};
+    face.vertices[3].texcoord = glm::vec2{line_length, pegged_height - face.vertices[3].position.z};
+
+    const auto& texture = map.textures[face.texture_index];
+    // Apply offset and scale from pixels -> UV
+    for (auto& vertex : face.vertices) {
+        vertex.texcoord += texture_offset;
+        vertex.texcoord /= glm::vec2{texture.size};
+    }
+
+    destination.emplace_back(face);
+}
+
 SectorBoundaryFaces generate_faces_for_sector_boundary(
     const wad::LineDef& linedef, const wad::Vertex& start_vertex, const wad::Vertex& end_vertex,
     const std::span<const wad::SideDef> sidedefs, const std::span<const wad::Sector> sectors, const wad::WAD& wad,
@@ -66,34 +94,11 @@ SectorBoundaryFaces generate_faces_for_sector_boundary(
     const auto& front_sector = sectors[front_sidedef.sector_number];
     const auto& back_sector = sectors[back_sidedef.sector_number];
 
-    auto emit_face = [&](
-        const wad::Vertex& v0, const wad::Vertex& v1, const int16_t bottom, const int16_t top,
-        const wad::Name& texture_name, const float pegged_height, std::vector<Face>& destination
-    ) {
-        auto face = create_face(v0, v1, bottom, top);
-        face.texture_index = map.get_texture_index(texture_name, wad);
-
-        const auto line_length = glm::distance(
-            glm::vec2{v0.x, v0.y}, glm::vec2{v1.x, v1.y}
-        );
-
-        face.vertices[0].texcoord = glm::vec2{0, pegged_height - face.vertices[0].position.z};
-        face.vertices[1].texcoord = glm::vec2{line_length, pegged_height - face.vertices[1].position.z};
-        face.vertices[2].texcoord = glm::vec2{0, pegged_height - face.vertices[2].position.z};
-        face.vertices[3].texcoord = glm::vec2{line_length, pegged_height - face.vertices[3].position.z};
-
-        destination.emplace_back(face);
-    };
-
     const auto is_front_lower = front_sector.floor_height <= back_sector.floor_height;
     const bool is_front_side_higher = front_sector.ceiling_height >= back_sector.ceiling_height;
 
     const auto higher_ceiling_height = is_front_side_higher ? front_sector.ceiling_height : back_sector.ceiling_height;
     const auto higher_floor_height = is_front_lower ? back_sector.floor_height : front_sector.floor_height;
-
-    const auto line_length = glm::distance(
-        glm::vec2{start_vertex.x, start_vertex.y}, glm::vec2{end_vertex.x, end_vertex.y}
-    );
 
     // Emit the floor-to-middle face
     if (front_sector.floor_height != back_sector.floor_height) {
@@ -104,12 +109,14 @@ SectorBoundaryFaces generate_faces_for_sector_boundary(
         if (is_front_lower) {
             emit_face(
                 start_vertex, end_vertex, front_sector.floor_height, back_sector.floor_height,
-                front_sidedef.lower_texture_name, pegged_height, boundary.front_sidedef_faces
+                front_sidedef.lower_texture_name, glm::i16vec2{front_sidedef.x_offset, front_sidedef.y_offset},
+                pegged_height, boundary.front_sidedef_faces, wad, map
             );
         } else {
             emit_face(
                 end_vertex, start_vertex, back_sector.floor_height, front_sector.floor_height,
-                back_sidedef.lower_texture_name, pegged_height, boundary.back_sidedef_faces
+                back_sidedef.lower_texture_name, glm::i16vec2{back_sidedef.x_offset, back_sidedef.y_offset},
+                pegged_height, boundary.back_sidedef_faces, wad, map
             );
         }
     }
@@ -123,14 +130,16 @@ SectorBoundaryFaces generate_faces_for_sector_boundary(
         if (front_sidedef.middle_texture_name.is_valid()) {
             emit_face(
                 start_vertex, end_vertex, floor_height, ceiling_height, front_sidedef.middle_texture_name,
-                pegged_height, boundary.front_sidedef_faces
+                glm::i16vec2{front_sidedef.x_offset, front_sidedef.y_offset}, pegged_height,
+                boundary.front_sidedef_faces, wad, map
             );
         }
 
         if (back_sidedef.middle_texture_name.is_valid()) {
             emit_face(
                 end_vertex, start_vertex, floor_height, ceiling_height, back_sidedef.middle_texture_name,
-                pegged_height, boundary.back_sidedef_faces
+                glm::i16vec2{back_sidedef.x_offset, back_sidedef.y_offset},
+                pegged_height, boundary.back_sidedef_faces, wad, map
             );
         }
     }
@@ -143,12 +152,14 @@ SectorBoundaryFaces generate_faces_for_sector_boundary(
         if (is_front_side_higher && front_sidedef.upper_texture_name.is_valid()) {
             emit_face(
                 start_vertex, end_vertex, back_sector.ceiling_height, front_sector.ceiling_height,
-                front_sidedef.upper_texture_name, pegged_height, boundary.front_sidedef_faces
+                front_sidedef.upper_texture_name, glm::i16vec2{front_sidedef.x_offset, front_sidedef.y_offset},
+                pegged_height, boundary.front_sidedef_faces, wad, map
             );
         } else if (back_sidedef.upper_texture_name.is_valid()) {
             emit_face(
                 end_vertex, start_vertex, front_sector.ceiling_height, back_sector.ceiling_height,
-                back_sidedef.upper_texture_name, pegged_height, boundary.back_sidedef_faces
+                back_sidedef.upper_texture_name, glm::i16vec2{back_sidedef.x_offset, back_sidedef.y_offset},
+                pegged_height, boundary.back_sidedef_faces, wad, map
             );
         }
     }
@@ -165,33 +176,12 @@ void generate_one_sided_wall(
     const auto& sector = sectors[sidedef.sector_number];
 
     auto& faces = map.sectors[sidedef.sector_number].faces;
-    auto& face = faces.emplace_back();
-    face = create_face(start_vertex, end_vertex, sector.floor_height, sector.ceiling_height);
 
-    const auto vertical_uv_distance = (face.vertices[2].position.z - face.vertices[0].position.z) / 64.f;
-
-    const auto line_length = glm::distance(
-        glm::vec2{start_vertex.x, start_vertex.y}, glm::vec2{end_vertex.x, end_vertex.y}
+    const auto pegged_height = flags & wad::LineDef::LowerTextureUnpegged ? sector.floor_height : sector.ceiling_height;
+    emit_face(
+        start_vertex, end_vertex, sector.floor_height, sector.ceiling_height, sidedef.middle_texture_name,
+        glm::i16vec2{sidedef.x_offset, sidedef.y_offset}, pegged_height, faces, wad, map
     );
-    const auto line_length_uv = line_length / 64.f;
-
-    // If the linedef has the "lower unpegged" flag, the bottom of the texture should be at the floor
-    if (flags & wad::LineDef::LowerTextureUnpegged) {
-        // v0 is the bottom start, v1 is the bottom end, v2 is the top start, v3 is the top end
-        // v0 and v1 should have texcoords with y = 0
-
-        face.vertices[0].texcoord = glm::vec2{0, 1};
-        face.vertices[1].texcoord = glm::vec2{line_length_uv, 1};
-        face.vertices[2].texcoord = glm::vec2{0, 1 - vertical_uv_distance};
-        face.vertices[3].texcoord = glm::vec2{line_length_uv, 1 - vertical_uv_distance};
-    } else {
-        face.vertices[0].texcoord = glm::vec2{0, vertical_uv_distance};
-        face.vertices[1].texcoord = glm::vec2{line_length_uv, vertical_uv_distance};
-        face.vertices[2].texcoord = glm::vec2{0, 0};
-        face.vertices[3].texcoord = glm::vec2{line_length_uv, 0};
-    }
-
-    face.texture_index = map.get_texture_index(sidedef.middle_texture_name, wad);
 }
 
 Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
@@ -265,13 +255,7 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
         const auto& start_vertex = vertexes[linedef.start_vertex];
         const auto& end_vertex = vertexes[linedef.end_vertex];
 
-        const auto line_length = glm::distance(
-            glm::vec2{start_vertex.x, start_vertex.y}, glm::vec2{end_vertex.x, end_vertex.y}
-        );
-        
         const auto& front_sidedef = sidedefs[linedef.front_sidedef];
-
-        TODO: Apply the map texture's offset
 
         if (linedef.flags & wad::LineDef::TwoSided) {
             // Two-sided wall

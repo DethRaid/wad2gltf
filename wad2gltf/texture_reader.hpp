@@ -1,11 +1,12 @@
 #pragma once
 
+#include <glm/glm.hpp>
+
 #include "wad.hpp"
 
 struct DecodedTexture {
     wad::Name name;
-    uint16_t width;
-    uint16_t height;
+    glm::u16vec2 size;
     std::vector<uint8_t> pixels;
     std::vector<uint8_t> alpha_mask;
 };
