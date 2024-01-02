@@ -12,6 +12,7 @@
 
 #include "gltf_export.hpp"
 #include "map_reader.hpp"
+#include "texture_exporter.hpp"
 #include "texture_reader.hpp"
 #include "wad_loader.hpp"
 #include "fastgltf/core.hpp"
@@ -78,7 +79,7 @@ map, and one Mesh Primitive for each sector.)"
         auto exporter = fastgltf::FileExporter{};
         exporter.setImagePath("textures");
 
-        const auto result = exporter.writeGLTF(gltf_map, output_file);
+        const auto result = exporter.writeGltfJson(gltf_map, output_file, fastgltf::ExportOptions::PrettyPrintJson);
 
         if(result != fastgltf::Error::None) {
             std::print(std::cout, "Could not write glTF file: {}\n", fastgltf::getErrorMessage(result));
@@ -89,14 +90,7 @@ map, and one Mesh Primitive for each sector.)"
         const auto images_folder = output_file.parent_path() / "textures";
         std::filesystem::create_directories(images_folder);
         for(const auto& texture : map.textures) {
-            const auto image_file = images_folder / std::format("{}.png", texture.info.name.to_string());
-            const auto image_file_string = image_file.string();
-            const auto write_result = stbi_write_png(
-                image_file_string.c_str(), texture.info.width, texture.info.height, 1, texture.pixels.data(), 0
-            );
-            if (write_result != 1) {
-                throw std::runtime_error{ std::format("Could not write image {}", image_file_string) };
-            }
+            export_texture(texture, images_folder, wad);
         }
 
     } catch (const std::exception& e) {

@@ -1,12 +1,13 @@
 #pragma once
 
-#include <string_view>
-
 #include "wad.hpp"
 
-struct DecodedMapTexture {
-    wad::MapTexture info;
+struct DecodedTexture {
+    wad::Name name;
+    uint16_t width;
+    uint16_t height;
     std::vector<uint8_t> pixels;
+    std::vector<uint8_t> alpha_mask;
 };
 
 /**
@@ -19,4 +20,4 @@ struct DecodedMapTexture {
  * \return The loaded texture, without the palette applied
  * \throws std::runtime_error if there's a runtime error
  */
-DecodedMapTexture load_texture_from_wad(const wad::Name& texture_name, const wad::WAD& wad);
+DecodedTexture load_texture_from_wad(const wad::Name& texture_name, const wad::WAD& wad);

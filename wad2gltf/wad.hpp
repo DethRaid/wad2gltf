@@ -17,6 +17,8 @@ namespace wad {
         bool operator==(const Name& other) const;
 
         std::string to_string() const;
+
+        bool is_valid() const;
     };
 
     inline bool Name::operator==(const std::string_view str) const {
@@ -24,12 +26,12 @@ namespace wad {
     }
 
     inline bool Name::operator==(const Name& other) const {
-        for(auto i = 0; i < 8; i++) {
-            if (val[i] != other.val[i]) {
+        for (auto i = 0; i < 8; i++) {
+            if (toupper(static_cast<unsigned char>(val[i])) != toupper(static_cast<unsigned char>(other.val[i]))) {
                 return false;
             }
 
-            if(val[i] == other.val[i] && val[i] == '\0') {
+            if (val[i] == other.val[i] && val[i] == '\0') {
                 // We've iterated to the end of the string, and we've reached the null terminator. The names are equal
                 return true;
             }
@@ -41,7 +43,11 @@ namespace wad {
 
     inline std::string Name::to_string() const {
         const auto length = strnlen_s(val, 8);
-        return std::string{ val, length };
+        return std::string{val, length};
+    }
+
+    inline bool Name::is_valid() const {
+        return val[0] != '\0' && val[0] != '-';
     }
 
     struct Header {
@@ -104,7 +110,7 @@ namespace wad {
         WAD(WAD&& old) noexcept = default;
         WAD& operator=(WAD&& old) noexcept = default;
 
-        template<typename NameType>
+        template <typename NameType>
         auto find_lump(const NameType& lump_name) const {
             const auto itr = std::ranges::find_if(
                 lump_directory, [&](const LumpInfo& lump) {
@@ -112,7 +118,7 @@ namespace wad {
                 }
             );
             if (itr == lump_directory.end()) {
-                throw std::runtime_error{std::format("Could not find requested map {}", lump_name)};
+                throw std::runtime_error{std::format("Could not find requested lump {}", lump_name)};
             }
 
             return itr;
@@ -138,6 +144,16 @@ namespace wad {
         int16_t sector_tag = 0;
         int16_t front_sidedef = 0;
         int16_t back_sidedef = 0;
+
+        constexpr static inline uint16_t BlocksPlayersAndMonsters   = 0x0001;
+        constexpr static inline uint16_t BlocksMonsters             = 0x0002;
+        constexpr static inline uint16_t TwoSided                   = 0x0004;
+        constexpr static inline uint16_t UpperTextureUnpegged       = 0x0008;
+        constexpr static inline uint16_t LowerTextureUnpegged       = 0x0010;
+        constexpr static inline uint16_t Secret                     = 0x0020;
+        constexpr static inline uint16_t BlocksSound                = 0x0040;
+        constexpr static inline uint16_t NeverShowOnAutomap         = 0x0080;
+        constexpr static inline uint16_t AlwaysShowOnAutomap        = 0x0100;
     };
 
     struct SideDef {
@@ -298,7 +314,7 @@ template <>
 struct std::formatter<wad::Name> : std::formatter<std::string> {
     auto format(const wad::Name& name, format_context& ctx) const {
         const auto length = strnlen_s(name.val, 8);
-        const auto view = std::string_view{ name.val, length };
+        const auto view = std::string_view{name.val, length};
         return formatter<string>::format(std::format("{}", view), ctx);
     }
 };

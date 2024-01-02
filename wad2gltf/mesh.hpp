@@ -14,47 +14,49 @@
  * A collection of struct to define meshes for WAD maps
  */
 
-struct Vertex
-{
+struct Vertex {
     glm::vec3 position;
-    glm::vec3 normal;
     glm::vec2 texcoord;
 };
 
-struct Face
-{
+struct Face {
     std::array<Vertex, 4> vertices;
+    glm::vec3 normal;
     uint32_t texture_index;
 
     // Indices: 0 1 2 3 2 1
     // Counter-clockwise winding order
 };
 
-struct Sector
-{
+struct Sector {
     std::vector<Face> faces;
 };
 
 struct Map {
     std::vector<Sector> sectors;
 
-    std::vector<DecodedMapTexture> textures;
+    std::vector<DecodedTexture> textures;
 
     /**
-     * \brief Finds the index of the requested texture in the textures array
+     * \brief Finds the index of the requested texture in the textures array, or loads it if is doesn't exist
      * \param texture_name Name of the texture to find
-     * \return Index of the texture, or an empty optional if it doesn't exist
+     * \return Index of the texture
      */
-    std::optional<uint32_t> get_texture_index(const wad::Name& texture_name) const;
+    uint32_t get_texture_index(const wad::Name& texture_name, const wad::WAD& wad);
 };
 
-inline std::optional<uint32_t> Map::get_texture_index(const wad::Name& texture_name) const {
+inline uint32_t Map::get_texture_index(const wad::Name& texture_name, const wad::WAD& wad) {
+    if(!texture_name.is_valid()) {
+        throw std::runtime_error{ "Texture name is not valid" };
+    }
     for (auto i = 0; i < textures.size(); i++) {
         const auto& texture = textures[i];
-        if(texture.info.name == texture_name) {
+        if (texture.name == texture_name) {
             return i;
         }
     }
 
-    return std::nullopt;
+    auto index = textures.size();
+    textures.emplace_back(load_texture_from_wad(texture_name, wad));
+    return static_cast<uint32_t>(index);
 }

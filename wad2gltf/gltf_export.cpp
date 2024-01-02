@@ -1,9 +1,12 @@
 #include "gltf_export.hpp"
 
 #include <format>
+#include <stb_image_write.h>
 
 #include <glm/ext/quaternion_trigonometric.hpp>
 #include <glm/gtc/quaternion.hpp>
+
+#include "glm/ext/scalar_reciprocal.hpp"
 
 template <typename DataType>
 void write_data_to_buffer(std::vector<uint8_t>& buffer, const std::span<const DataType> data) {
@@ -25,11 +28,13 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
     auto& sampler = model.samplers.emplace_back();
     sampler.magFilter = fastgltf::Filter::Nearest;
     sampler.minFilter = fastgltf::Filter::NearestMipMapNearest;
+    sampler.wrapS = fastgltf::Wrap::Repeat;
+    sampler.wrapT = fastgltf::Wrap::Repeat;
 
-    // Create materials for all the map textures. We'll shrimply create a non-PBR material for each one
+    // Create materials for all the map textures
     for (const auto& texture : map.textures) {
         auto& gltf_material = model.materials.emplace_back();
-        gltf_material.name = texture.info.name.to_string();
+        gltf_material.name = texture.name.to_string();
         // TODO: Use masked alpha for images with transparency
         gltf_material.pbrData.baseColorTexture = fastgltf::TextureInfo{
             .textureIndex = model.textures.size(), .texCoordIndex = 0
@@ -40,10 +45,9 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
         gltf_texture.samplerIndex = 0; // We'll all use a point-filtered wrapping sampler
         gltf_texture.imageIndex = model.images.size();
 
-        // I write the actual images in the main function
+        // TODO: Use stbi_write_png_to_mem to write the PNG to the glTF if we're embedding images
 
         const auto image_filename = std::format("textures/{}.png", gltf_texture.name);
-       
         auto& gltf_image = model.images.emplace_back();
         gltf_image.name = gltf_material.name;
         gltf_image.data = fastgltf::sources::URI{
@@ -64,22 +68,33 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
     // buffer, so we need to know the final size of the buffer
     // The views will be in the same order as the buffers, so we can construct the accessors
 
+    auto sector_index = 0;
     for (const auto& sector : map.sectors) {
         scene.nodeIndices.emplace_back(model.nodes.size());
 
         const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{1, 0, 0});
 
+        // One DOOM unit is equal to roughly 1/64 of a meter
+        // However, DOOM was designed for a monitor that had rectangular pixels - they were a little taller than they
+        // were wide. This exporter attempts to reproduce that effect by scaling the level a little along the X and Y
         auto& node = model.nodes.emplace_back();
-        node.name = name;
-        node.meshIndex = model.meshes.size();
+        node.name = std::format("{} Sector {}", name, sector_index);
         node.transform = fastgltf::Node::TRS{
             .translation = {0, 0, 0},
             .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
-            .scale = {1, 1, 1},
+            .scale = {0.833f / 64.f, 0.833f / 64.f, 1.f / 64.f},
         };
 
+        // Don't emit a mesh for empty sectors. Their nodes will define them
+        if(sector.faces.empty()) {
+            sector_index++;
+            continue;
+        }
+
+        node.meshIndex = model.meshes.size();
+
         auto& mesh = model.meshes.emplace_back();
-        mesh.name = std::format("{} Sector {}", name, model.meshes.size() - 1);
+        mesh.name = std::format("{} Sector {}", name, sector_index);
 
         for (const auto& face : sector.faces) {
             auto& primitive = mesh.primitives.emplace_back();
@@ -122,7 +137,6 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
             position_accessor.min = FASTGLTF_STD_PMR_NS::vector<double>{min_x, min_y, min_z};
             position_accessor.max = FASTGLTF_STD_PMR_NS::vector<double>{max_x, max_y, max_z};
 
-
             write_data_to_buffer<glm::vec3>(
                 positions, std::array{
                     face.vertices[0].position,
@@ -143,14 +157,17 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
 
             write_data_to_buffer<glm::vec3>(
                 normals, std::array{
-                    face.vertices[0].normal,
-                    face.vertices[1].normal,
-                    face.vertices[2].normal,
-                    face.vertices[3].normal,
+                    face.normal,
+                    face.normal,
+                    face.normal,
+                    face.normal,
                 }
             );
 
             // Texcoords
+
+            TODO: Divide the texture coordinates by the texture size to get nice UVs for modern graphics
+
             primitive.attributes.emplace_back("TEXCOORD_0", model.accessors.size());
             auto& texcoord_accessor = model.accessors.emplace_back();
             texcoord_accessor.bufferViewIndex = 3;
@@ -185,6 +202,8 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
             // MapTexture indices and material indices
             primitive.materialIndex = face.texture_index;
         }
+
+        sector_index++;
     }
 
     auto& indices_buffer_view = model.bufferViews.emplace_back();
@@ -222,22 +241,22 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
     model.buffers.resize(4);
     auto& indices_buffer = model.buffers[0];
     indices_buffer.byteLength = indices.size();
-    indices_buffer.name = "Indices buffer";
+    indices_buffer.name = "Indices";
     indices_buffer.data = fastgltf::sources::Vector{.bytes = indices};
 
     auto& positions_buffer = model.buffers[1];
     positions_buffer.byteLength = positions.size();
-    positions_buffer.name = "Positions buffer";
+    positions_buffer.name = "Positions";
     positions_buffer.data = fastgltf::sources::Vector{.bytes = positions};
 
     auto& normals_buffer = model.buffers[2];
     normals_buffer.byteLength = normals.size();
-    normals_buffer.name = "Normals buffer";
+    normals_buffer.name = "Normals";
     normals_buffer.data = fastgltf::sources::Vector{.bytes = normals};
 
     auto& texcoords_buffer = model.buffers[3];
     texcoords_buffer.byteLength = texcoords.size();
-    texcoords_buffer.name = "Texcoords buffer";
+    texcoords_buffer.name = "Texcoords";
     texcoords_buffer.data = fastgltf::sources::Vector{.bytes = texcoords};
 
     return model;
