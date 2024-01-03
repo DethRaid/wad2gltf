@@ -22,3 +22,5 @@ struct DecodedTexture {
  * \throws std::runtime_error if there's a runtime error
  */
 DecodedTexture load_texture_from_wad(const wad::Name& texture_name, const wad::WAD& wad);
+
+DecodedTexture load_flat_from_wad(const wad::Name& flat_name, const wad::WAD& wad);

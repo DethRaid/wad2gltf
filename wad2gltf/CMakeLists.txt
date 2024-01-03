@@ -1,10 +1,20 @@
 ﻿# Dependencies
 include(FetchContent)
 
+set(EARCUT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(EARCUT_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+set(EARCUT_BUILD_VIZ OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
     cli11
     GIT_REPOSITORY  https://github.com/CLIUtils/CLI11.git
-    GIT_TAG          v2.3.2 
+    GIT_TAG         v2.3.2 
+)
+
+FetchContent_Declare(
+    earcut
+    GIT_REPOSITORY  https://github.com/mapbox/earcut.hpp.git
+    GIT_TAG         bf42168d1ae117091e45db5ac3464f2d02c9d9fb
 )
 
 FetchContent_Declare(
@@ -19,7 +29,7 @@ FetchContent_Declare(
     GIT_TAG         7882684a2cd69005fb57001c17a332899621e2be
 )
 
-FetchContent_MakeAvailable(cli11 fastgltf glm)
+FetchContent_MakeAvailable(cli11 earcut fastgltf glm)
 
 # STB
 FetchContent_Declare(
@@ -47,6 +57,7 @@ file(GLOB_RECURSE WAD2GLTF_SOURCE CONFIGURE_DEPENDS
 add_executable (wad2gltf ${WAD2GLTF_SOURCE})
 target_link_libraries(wad2gltf PUBLIC
     CLI11::CLI11
+    earcut_hpp::earcut_hpp
     fastgltf
     glm
     stb

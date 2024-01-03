@@ -17,6 +17,192 @@ void write_data_to_buffer(std::vector<uint8_t>& buffer, const std::span<const Da
     std::memcpy(dest_ptr, data.data(), num_bytes);
 }
 
+void add_face(
+    const Face& face, fastgltf::Asset& model, std::vector<uint8_t>& positions, std::vector<uint8_t>& normals,
+    std::vector<uint8_t>& texcoords, std::vector<uint8_t>& indices, fastgltf::Mesh& mesh
+) {
+    auto& primitive = mesh.primitives.emplace_back();
+    primitive.type = fastgltf::PrimitiveType::Triangles;
+
+    // Positions
+    primitive.attributes.emplace_back("POSITION", model.accessors.size());
+    auto& position_accessor = model.accessors.emplace_back();
+    position_accessor.bufferViewIndex = 1;
+    position_accessor.byteOffset = positions.size();
+    position_accessor.componentType = fastgltf::ComponentType::Float;
+    position_accessor.count = 4;
+    position_accessor.type = fastgltf::AccessorType::Vec3;
+
+    const auto min_x = glm::min(
+        glm::min(face.vertices[0].position.x, face.vertices[1].position.x),
+        glm::min(face.vertices[2].position.x, face.vertices[3].position.x)
+    );
+    const auto min_y = glm::min(
+        glm::min(face.vertices[0].position.y, face.vertices[1].position.y),
+        glm::min(face.vertices[2].position.y, face.vertices[3].position.y)
+    );
+    const auto min_z = glm::min(
+        glm::min(face.vertices[0].position.z, face.vertices[1].position.z),
+        glm::min(face.vertices[2].position.z, face.vertices[3].position.z)
+    );
+    const auto max_x = glm::max(
+        glm::max(face.vertices[0].position.x, face.vertices[1].position.x),
+        glm::max(face.vertices[2].position.x, face.vertices[3].position.x)
+    );
+    const auto max_y = glm::max(
+        glm::max(face.vertices[0].position.y, face.vertices[1].position.y),
+        glm::max(face.vertices[2].position.y, face.vertices[3].position.y)
+    );
+    const auto max_z = glm::max(
+        glm::max(face.vertices[0].position.z, face.vertices[1].position.z),
+        glm::max(face.vertices[2].position.z, face.vertices[3].position.z)
+    );
+
+    position_accessor.min = FASTGLTF_STD_PMR_NS::vector<double>{min_x, min_y, min_z};
+    position_accessor.max = FASTGLTF_STD_PMR_NS::vector<double>{max_x, max_y, max_z};
+
+    write_data_to_buffer<glm::vec3>(
+        positions, std::array{
+            face.vertices[0].position,
+            face.vertices[1].position,
+            face.vertices[2].position,
+            face.vertices[3].position,
+        }
+    );
+
+    // Normals
+    primitive.attributes.emplace_back("NORMAL", model.accessors.size());
+    auto& normal_accessor = model.accessors.emplace_back();
+    normal_accessor.bufferViewIndex = 2;
+    normal_accessor.byteOffset = normals.size();
+    normal_accessor.componentType = fastgltf::ComponentType::Float;
+    normal_accessor.count = 4;
+    normal_accessor.type = fastgltf::AccessorType::Vec3;
+
+    write_data_to_buffer<glm::vec3>(
+        normals, std::array{
+            face.normal,
+            face.normal,
+            face.normal,
+            face.normal,
+        }
+    );
+
+    // Texcoords
+    primitive.attributes.emplace_back("TEXCOORD_0", model.accessors.size());
+    auto& texcoord_accessor = model.accessors.emplace_back();
+    texcoord_accessor.bufferViewIndex = 3;
+    texcoord_accessor.byteOffset = texcoords.size();
+    texcoord_accessor.componentType = fastgltf::ComponentType::Float;
+    texcoord_accessor.count = 4;
+    texcoord_accessor.type = fastgltf::AccessorType::Vec2;
+
+    write_data_to_buffer<glm::vec2>(
+        texcoords, std::array{
+            face.vertices[0].texcoord,
+            face.vertices[1].texcoord,
+            face.vertices[2].texcoord,
+            face.vertices[3].texcoord,
+        }
+    );
+
+    // Indices
+    primitive.indicesAccessor = model.accessors.size();
+    auto& indices_accessor = model.accessors.emplace_back();
+    indices_accessor.bufferViewIndex = 0;
+    indices_accessor.byteOffset = indices.size();
+    indices_accessor.componentType = fastgltf::ComponentType::UnsignedInt;
+    indices_accessor.count = 6;
+    indices_accessor.type = fastgltf::AccessorType::Scalar;
+
+    // 0 1 2 3 2 1
+    // Same for all faces
+    write_data_to_buffer<uint32_t>(indices, std::array{0u, 1u, 2u, 3u, 2u, 1u});
+
+    // Material. We create one material for each unique MapTexture, so there's a 1:1 relationship between
+    // MapTexture indices and material indices
+    primitive.materialIndex = face.texture_index;
+}
+
+void add_flat(
+    const Flat& flat, const glm::vec3& normal, fastgltf::Asset& model, std::vector<uint8_t>& positions_out,
+    std::vector<uint8_t>& normals_out, std::vector<uint8_t>& texcoords_out, std::vector<uint8_t>& indices_out,
+    fastgltf::Mesh& mesh
+) {
+    auto& primitive = mesh.primitives.emplace_back();
+    primitive.type = fastgltf::PrimitiveType::Triangles;
+
+    // Positions
+    primitive.attributes.emplace_back("POSITION", model.accessors.size());
+    auto& position_accessor = model.accessors.emplace_back();
+    position_accessor.bufferViewIndex = 1;
+    position_accessor.byteOffset = positions_out.size();
+    position_accessor.componentType = fastgltf::ComponentType::Float;
+    position_accessor.count = flat.vertices.size();
+    position_accessor.type = fastgltf::AccessorType::Vec3;
+
+    auto texcoords = std::vector<glm::vec2>{};
+    texcoords.reserve(flat.vertices.size());
+    auto aabb_min = glm::vec3{FLT_MAX};
+    auto aabb_max = glm::vec3{-FLT_MAX};
+    for (const auto& pos : flat.vertices) {
+        aabb_min.x = glm::min(aabb_min.x, pos.x);
+        aabb_min.y = glm::min(aabb_min.y, pos.y);
+        aabb_min.z = glm::min(aabb_min.z, pos.z);
+
+        aabb_max.x = glm::max(aabb_max.x, pos.x);
+        aabb_max.y = glm::max(aabb_max.y, pos.y);
+        aabb_max.z = glm::max(aabb_max.z, pos.z);
+
+        // Ceiling flats are aligned to a 64x64 grid
+        texcoords.emplace_back(pos.x / 64.f, pos.y / 64.f);
+    }
+
+    position_accessor.min = FASTGLTF_STD_PMR_NS::vector<double>{aabb_min.x, aabb_min.y, aabb_min.z};
+    position_accessor.max = FASTGLTF_STD_PMR_NS::vector<double>{aabb_max.x, aabb_max.y, aabb_max.z};
+
+    write_data_to_buffer<glm::vec3>(positions_out, flat.vertices);
+
+    // Normals
+    primitive.attributes.emplace_back("NORMAL", model.accessors.size());
+    auto& normal_accessor = model.accessors.emplace_back();
+    normal_accessor.bufferViewIndex = 2;
+    normal_accessor.byteOffset = normals_out.size();
+    normal_accessor.componentType = fastgltf::ComponentType::Float;
+    normal_accessor.count = flat.vertices.size();
+    normal_accessor.type = fastgltf::AccessorType::Vec3;
+
+    const auto normals = std::vector(flat.vertices.size(), normal);
+
+    write_data_to_buffer<glm::vec3>(normals_out, normals);
+
+    // Texcoords
+    primitive.attributes.emplace_back("TEXCOORD_0", model.accessors.size());
+    auto& texcoord_accessor = model.accessors.emplace_back();
+    texcoord_accessor.bufferViewIndex = 3;
+    texcoord_accessor.byteOffset = texcoords_out.size();
+    texcoord_accessor.componentType = fastgltf::ComponentType::Float;
+    texcoord_accessor.count = texcoords.size();
+    texcoord_accessor.type = fastgltf::AccessorType::Vec2;
+
+    write_data_to_buffer<glm::vec2>(texcoords_out, texcoords);
+
+    // Indices
+    primitive.indicesAccessor = model.accessors.size();
+    auto& indices_accessor = model.accessors.emplace_back();
+    indices_accessor.bufferViewIndex = 0;
+    indices_accessor.byteOffset = indices_out.size();
+    indices_accessor.componentType = fastgltf::ComponentType::UnsignedInt;
+    indices_accessor.count = flat.indices.size();
+    indices_accessor.type = fastgltf::AccessorType::Scalar;
+
+    write_data_to_buffer<uint32_t>(indices_out, flat.indices);
+
+    // Material. We create one material for each unique MapTexture, so there's a 1:1 relationship between
+    // MapTexture indices and material indices
+    primitive.materialIndex = flat.texture_index;
+}
+
 fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
     auto model = fastgltf::Asset{};
     model.defaultScene = 0;
@@ -86,7 +272,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
         };
 
         // Don't emit a mesh for empty sectors. Their nodes will define them
-        if(sector.faces.empty()) {
+        if (sector.faces.empty()) {
             sector_index++;
             continue;
         }
@@ -97,109 +283,12 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
         mesh.name = std::format("{} Sector {}", name, sector_index);
 
         for (const auto& face : sector.faces) {
-            auto& primitive = mesh.primitives.emplace_back();
-            primitive.type = fastgltf::PrimitiveType::Triangles;
-
-            // Positions
-            primitive.attributes.emplace_back("POSITION", model.accessors.size());
-            auto& position_accessor = model.accessors.emplace_back();
-            position_accessor.bufferViewIndex = 1;
-            position_accessor.byteOffset = positions.size();
-            position_accessor.componentType = fastgltf::ComponentType::Float;
-            position_accessor.count = 4;
-            position_accessor.type = fastgltf::AccessorType::Vec3;
-
-            const auto min_x = glm::min(
-                glm::min(face.vertices[0].position.x, face.vertices[1].position.x),
-                glm::min(face.vertices[2].position.x, face.vertices[3].position.x)
-            );
-            const auto min_y = glm::min(
-                glm::min(face.vertices[0].position.y, face.vertices[1].position.y),
-                glm::min(face.vertices[2].position.y, face.vertices[3].position.y)
-            );
-            const auto min_z = glm::min(
-                glm::min(face.vertices[0].position.z, face.vertices[1].position.z),
-                glm::min(face.vertices[2].position.z, face.vertices[3].position.z)
-            );
-            const auto max_x = glm::max(
-                glm::max(face.vertices[0].position.x, face.vertices[1].position.x),
-                glm::max(face.vertices[2].position.x, face.vertices[3].position.x)
-            );
-            const auto max_y = glm::max(
-                glm::max(face.vertices[0].position.y, face.vertices[1].position.y),
-                glm::max(face.vertices[2].position.y, face.vertices[3].position.y)
-            );
-            const auto max_z = glm::max(
-                glm::max(face.vertices[0].position.z, face.vertices[1].position.z),
-                glm::max(face.vertices[2].position.z, face.vertices[3].position.z)
-            );
-
-            position_accessor.min = FASTGLTF_STD_PMR_NS::vector<double>{min_x, min_y, min_z};
-            position_accessor.max = FASTGLTF_STD_PMR_NS::vector<double>{max_x, max_y, max_z};
-
-            write_data_to_buffer<glm::vec3>(
-                positions, std::array{
-                    face.vertices[0].position,
-                    face.vertices[1].position,
-                    face.vertices[2].position,
-                    face.vertices[3].position,
-                }
-            );
-
-            // Normals
-            primitive.attributes.emplace_back("NORMAL", model.accessors.size());
-            auto& normal_accessor = model.accessors.emplace_back();
-            normal_accessor.bufferViewIndex = 2;
-            normal_accessor.byteOffset = normals.size();
-            normal_accessor.componentType = fastgltf::ComponentType::Float;
-            normal_accessor.count = 4;
-            normal_accessor.type = fastgltf::AccessorType::Vec3;
-
-            write_data_to_buffer<glm::vec3>(
-                normals, std::array{
-                    face.normal,
-                    face.normal,
-                    face.normal,
-                    face.normal,
-                }
-            );
-
-            // Texcoords
-
-            primitive.attributes.emplace_back("TEXCOORD_0", model.accessors.size());
-            auto& texcoord_accessor = model.accessors.emplace_back();
-            texcoord_accessor.bufferViewIndex = 3;
-            texcoord_accessor.byteOffset = texcoords.size();
-            texcoord_accessor.componentType = fastgltf::ComponentType::Float;
-            texcoord_accessor.count = 4;
-            texcoord_accessor.type = fastgltf::AccessorType::Vec2;
-
-            write_data_to_buffer<glm::vec2>(
-                texcoords, std::array{
-                    face.vertices[0].texcoord,
-                    face.vertices[1].texcoord,
-                    face.vertices[2].texcoord,
-                    face.vertices[3].texcoord,
-                }
-            );
-
-            // Indices
-            primitive.indicesAccessor = model.accessors.size();
-            auto& indices_accessor = model.accessors.emplace_back();
-            indices_accessor.bufferViewIndex = 0;
-            indices_accessor.byteOffset = indices.size();
-            indices_accessor.componentType = fastgltf::ComponentType::UnsignedInt;
-            indices_accessor.count = 6;
-            indices_accessor.type = fastgltf::AccessorType::Scalar;
-
-            // 0 1 2 3 2 1
-            // Same for all faces
-            write_data_to_buffer<uint32_t>(indices, std::array{0u, 1u, 2u, 3u, 2u, 1u});
-
-            // Material. We create one material for each unique MapTexture, so there's a 1:1 relationship between
-            // MapTexture indices and material indices
-            primitive.materialIndex = face.texture_index;
+            add_face(face, model, positions, normals, texcoords, indices, mesh);
         }
+
+        // Add the floor and ceiling primitives
+        add_flat(sector.ceiling, glm::vec3{0, 0, -1}, model, positions, normals, texcoords, indices, mesh);
+        add_flat(sector.floor, glm::vec3{0, 0, 1}, model, positions, normals, texcoords, indices, mesh);
 
         sector_index++;
     }

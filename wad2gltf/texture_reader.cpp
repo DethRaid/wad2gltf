@@ -93,11 +93,14 @@ const wad::MapTexture* find_texture_in_texture_group(
     return nullptr;
 }
 
-std::vector<uint8_t> load_flat_from_wad(const wad::Name& texture_name, const wad::WAD& wad) {
+DecodedTexture load_flat_from_wad(const wad::Name& flat_name, const wad::WAD& wad) {
     try {
-        const auto itr = wad.find_lump(texture_name);
+        const auto itr = wad.find_lump(flat_name);
         const auto pixels = wad.get_lump_data<uint8_t>(*itr);
-        return std::vector(pixels.begin(), pixels.end());
+        return DecodedTexture{
+            .name = flat_name, .size = {64, 64}, .pixels = std::vector(pixels.begin(), pixels.end()),
+            .alpha_mask = std::vector<uint8_t>(64 * 64, 0xFF)
+        };
     } catch (const std::exception& e) {
         // The texture is not a flat, return null or something
         return {};
