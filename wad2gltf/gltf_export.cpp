@@ -287,6 +287,9 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
         }
 
         // Add the floor and ceiling primitives
+        // Skip the floor and ceiling if the sector is empty. We get an empty sector when the line loops don't form a
+        // single polygon. That happens on like the slightly-higher blur floor in the starting room of E1M1, and
+        // probably other places. It seems that the sector has multiple polygons
         if (!sector.ceiling.indices.empty()) {
             add_flat(sector.ceiling, glm::vec3{ 0, 0, -1 }, model, positions, normals, texcoords, indices, mesh);
             add_flat(sector.floor, glm::vec3{ 0, 0, 1 }, model, positions, normals, texcoords, indices, mesh);

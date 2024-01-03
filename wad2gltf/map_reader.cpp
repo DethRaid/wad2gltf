@@ -353,6 +353,11 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
             polygon_line_loops.emplace_back(loop);
         }
 
+        // This produces zero indices for some sectors - namely, the slightly-higher blue carpet in the starting room
+        // of E1M1. It seems that this fails if the provided vertices form multiple polygons
+        // TODO: Split the vertices into multiple polygons
+        // A line loop encloses a polygon if the sum of the angles where the lines point inside is greater than the sum
+        // of the angles where the lines point outside. 
         const auto ceiling_indices = mapbox::earcut<uint32_t>(polygon_line_loops);
 
         // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
