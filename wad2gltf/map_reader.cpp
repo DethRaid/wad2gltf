@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <iostream>
+#include <numeric>
 #include <set>
 
 #include <mapbox/earcut.hpp>
@@ -180,7 +181,7 @@ void generate_one_sided_wall(
     const auto& sector = sectors[sidedef.sector_number];
 
     // There's a sector with floor and ceiling height set to 0? Not sure why, not sure why it used to work
-    if(sector.ceiling_height == sector.floor_height) {
+    if (sector.ceiling_height == sector.floor_height) {
         return;
     }
 
@@ -191,6 +192,43 @@ void generate_one_sided_wall(
         start_vertex, end_vertex, sector.floor_height, sector.ceiling_height, sidedef.middle_texture_name,
         glm::i16vec2{sidedef.x_offset, sidedef.y_offset}, pegged_height, faces, wad, map
     );
+}
+
+std::vector<std::array<int16_t, 2>> extract_line_loop(
+    const std::span<const wad::Vertex> vertexes, const std::vector<std::pair<uint16_t, uint16_t>>& sector_linedefs,
+    std::vector<uint32_t>& remaining_lines
+) {
+    auto visited_lines = std::set<size_t>{};
+    auto vertices_in_loop = std::vector<std::array<int16_t, 2>>{};
+
+    auto cur_line_idx = remaining_lines[0];
+    auto iterating = true;
+    while (iterating) {
+        visited_lines.emplace(cur_line_idx);
+        std::erase(remaining_lines, cur_line_idx);
+        const auto& cur_line = sector_linedefs[cur_line_idx];
+
+        // Add our vertex to the loop
+        const auto& vertex = vertexes[cur_line.first];
+        vertices_in_loop.emplace_back(std::array{vertex.x, vertex.y});
+
+        // Find the line that continues the loop
+        for (auto i = 0u; i < sector_linedefs.size(); i++) {
+            const auto& test_line = sector_linedefs[i];
+            if (test_line.first == cur_line.second) {
+                if (visited_lines.contains(i)) {
+                    // We've reached the start of the loop. Return the loop
+                    return vertices_in_loop;
+                } else {
+                    // This is a continuation of the loop, keep iterating
+                    cur_line_idx = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    return vertices_in_loop;
 }
 
 Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
@@ -304,42 +342,18 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
     // Split the polygons into triangles, using the algorithm described in https://www.niser.ac.in/~aritra/CG/Triangulation.pdf
     for (auto i = 0u; i < linedefs_per_sector.size(); i++) {
         const auto& sector_linedefs = linedefs_per_sector[i];
-        auto visited_lines = std::set<size_t>{};
-        auto outside_vertices = std::vector<std::array<int16_t, 2>>{};
 
-        auto cur_line_idx = 0u;
-        auto iterating = true;
-        while (iterating) {
-            visited_lines.emplace(cur_line_idx);
-            const auto& cur_line = sector_linedefs[cur_line_idx];
+        auto remaining_lines = std::vector<uint32_t>(sector_linedefs.size());
+        std::iota(remaining_lines.begin(), remaining_lines.end(), 0);
 
-            // Add our vertex to the loop
-            const auto& vertex = vertexes[cur_line.first];
-            outside_vertices.emplace_back(std::array{ vertex.x, vertex.y });
+        auto polygon_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
 
-            // Find the line that continues the loop
-            for (auto i = 0u; i < sector_linedefs.size(); i++) {
-                const auto& test_line = sector_linedefs[i];
-                if (test_line.first == cur_line.second) {
-                    if(visited_lines.contains(i)) {
-                        // We've reached the start of the loop
-                        iterating = false;
-                        break;
-                    } else {
-                        // This is a continuation of the loop, keep iterating
-                        cur_line_idx = i;
-                        break;
-                    }
-                }
-            }
+        while (!remaining_lines.empty()) {
+            auto loop = extract_line_loop(vertexes, sector_linedefs, remaining_lines);
+            polygon_line_loops.emplace_back(loop);
         }
 
-        if (visited_lines.size() != sector_linedefs.size()) {
-            std::print(std::cerr, "Sector contains multiple line loops!");
-        }
-
-        const auto polygon = std::vector<std::vector<std::array<int16_t, 2>>>{ outside_vertices };
-        const auto ceiling_indices = mapbox::earcut<uint32_t>(polygon);
+        const auto ceiling_indices = mapbox::earcut<uint32_t>(polygon_line_loops);
 
         // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
         auto& map_sector = map.sectors[i];
@@ -348,10 +362,19 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
         map_sector.ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
         map_sector.floor.texture_index = map.get_flat_index(sector.floor_texture, wad);
 
-        map_sector.ceiling.vertices.reserve(outside_vertices.size());
-        map_sector.floor.vertices.reserve(outside_vertices.size());
+        // Flatten the vertices arrays
+        auto vertices = std::vector<glm::vec2>{};
+        vertices.reserve(polygon_line_loops.size() * polygon_line_loops[0].size());
+        for (const auto& loop_vertices : polygon_line_loops) {
+            for (const auto& vertex : loop_vertices) {
+                vertices.emplace_back(vertex[0], vertex[1]);
+            }
+        }
 
-        for(const auto& vertex : outside_vertices) {
+        map_sector.ceiling.vertices.reserve(vertices.size());
+        map_sector.floor.vertices.reserve(vertices.size());
+
+        for (const auto& vertex : vertices) {
             map_sector.ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
             map_sector.floor.vertices.emplace_back(vertex[0], vertex[1], sector.floor_height);
         }
@@ -359,7 +382,7 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
         map_sector.ceiling.indices.resize(ceiling_indices.size());
         map_sector.floor.indices.resize(ceiling_indices.size());
 
-        for(auto triangle_index = 0u; triangle_index < ceiling_indices.size(); triangle_index += 3) {
+        for (auto triangle_index = 0u; triangle_index < ceiling_indices.size(); triangle_index += 3) {
             map_sector.ceiling.indices[triangle_index] = ceiling_indices[triangle_index + 2];
             map_sector.ceiling.indices[triangle_index + 1] = ceiling_indices[triangle_index + 1];
             map_sector.ceiling.indices[triangle_index + 2] = ceiling_indices[triangle_index];

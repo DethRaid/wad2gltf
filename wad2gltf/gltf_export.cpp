@@ -287,8 +287,10 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
         }
 
         // Add the floor and ceiling primitives
-        add_flat(sector.ceiling, glm::vec3{0, 0, -1}, model, positions, normals, texcoords, indices, mesh);
-        add_flat(sector.floor, glm::vec3{0, 0, 1}, model, positions, normals, texcoords, indices, mesh);
+        if (!sector.ceiling.indices.empty()) {
+            add_flat(sector.ceiling, glm::vec3{ 0, 0, -1 }, model, positions, normals, texcoords, indices, mesh);
+            add_flat(sector.floor, glm::vec3{ 0, 0, 1 }, model, positions, normals, texcoords, indices, mesh);
+        }
 
         sector_index++;
     }
