@@ -5,12 +5,12 @@
 #include <cctype>
 #include <string_view>
 
-size_t strlen_s_wrapper(const char* str, size_t max_length) {
+inline size_t strlen_s_wrapper(const char* str, size_t max_length) {
 #ifdef __STDC_LIB_EXT1__
     return strlen_s(str, max_length);
 #else
     for (auto size = size_t{0}; size < max_length; size++) {
-        if (str[max_length] == '\0') {
+        if (str[size] == '\0') {
             return size;
         }
     }
