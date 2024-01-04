@@ -234,7 +234,7 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
 Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& options) {
     auto itr = wad.find_lump(options.map_name);
 
-    std::print(std::cout, "Loaded map lump {}\n", itr->name);
+    std::cout << std::format("Loaded map lump {}\n", itr->name);
 
     // DOOM wiki says these have to be in this order
     const auto map_lump_itr = itr;
