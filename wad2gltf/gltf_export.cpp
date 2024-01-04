@@ -111,13 +111,13 @@ void add_face(
     auto& indices_accessor = model.accessors.emplace_back();
     indices_accessor.bufferViewIndex = 0;
     indices_accessor.byteOffset = indices.size();
-    indices_accessor.componentType = fastgltf::ComponentType::UnsignedInt;
+    indices_accessor.componentType = fastgltf::ComponentType::UnsignedShort;
     indices_accessor.count = 6;
     indices_accessor.type = fastgltf::AccessorType::Scalar;
 
     // 0 1 2 3 2 1
     // Same for all faces
-    write_data_to_buffer<uint32_t>(indices, std::array{0u, 1u, 2u, 3u, 2u, 1u});
+    write_data_to_buffer<uint16_t>(indices, std::array<uint16_t, 6>{0, 1, 2, 3, 2, 1});
 
     // Material. We create one material for each unique MapTexture, so there's a 1:1 relationship between
     // MapTexture indices and material indices
@@ -192,21 +192,23 @@ void add_flat(
     auto& indices_accessor = model.accessors.emplace_back();
     indices_accessor.bufferViewIndex = 0;
     indices_accessor.byteOffset = indices_out.size();
-    indices_accessor.componentType = fastgltf::ComponentType::UnsignedInt;
+    indices_accessor.componentType = fastgltf::ComponentType::UnsignedShort;
     indices_accessor.count = flat.indices.size();
     indices_accessor.type = fastgltf::AccessorType::Scalar;
 
-    write_data_to_buffer<uint32_t>(indices_out, flat.indices);
+    write_data_to_buffer<uint16_t>(indices_out, flat.indices);
 
     // Material. We create one material for each unique MapTexture, so there's a 1:1 relationship between
     // MapTexture indices and material indices
     primitive.materialIndex = flat.texture_index;
 }
 
-fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
+fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, const GltfExportOptions& options) {
     auto model = fastgltf::Asset{};
     model.defaultScene = 0;
     model.assetInfo = fastgltf::AssetInfo{.gltfVersion = "2.0", .generator = "wad2gltf"};
+
+    model.nodes.reserve(map.sectors.size() + map.things.size());
 
     auto& scene = model.scenes.emplace_back();
     scene.name = std::string{name};
@@ -248,28 +250,42 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
     auto texcoords = std::vector<uint8_t>{};
     texcoords.reserve(666 * 4 * sizeof(glm::vec2));
     auto indices = std::vector<uint8_t>{};
-    indices.reserve(666 * 6 * sizeof(uint32_t));
+    indices.reserve(666 * 6 * sizeof(uint16_t));
 
     // Don't create buffer views for the buffers yet. We'll have buffer views that cover the whole
     // buffer, so we need to know the final size of the buffer
     // The views will be in the same order as the buffers, so we can construct the accessors
 
+    // Set up a top-level node to apply a DOOM -> 3D transform
+    const auto parent_node_idx = model.nodes.size();
+    scene.nodeIndices.emplace_back(parent_node_idx);
+    auto& parent_node = model.nodes.emplace_back();
+    parent_node.name = name;
+    const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{ 1, 0, 0 });
+    parent_node.transform = fastgltf::Node::TRS{
+        .translation = {0, 0, 0},
+        .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
+        .scale = {0.833f / 64.f, 0.833f / 64.f, 1.f / 64.f},
+    };
+    parent_node.children.reserve(map.sectors.size() + map.things.size());
+
     auto sector_index = 0;
     for (const auto& sector : map.sectors) {
-        scene.nodeIndices.emplace_back(model.nodes.size());
-
-        const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{1, 0, 0});
+        model.nodes[parent_node_idx].children.emplace_back(model.nodes.size());
 
         // One DOOM unit is equal to roughly 1/64 of a meter
         // However, DOOM was designed for a monitor that had rectangular pixels - they were a little taller than they
         // were wide. This exporter attempts to reproduce that effect by scaling the level a little along the X and Y
         auto& node = model.nodes.emplace_back();
         node.name = std::format("{} Sector {}", name, sector_index);
+
         node.transform = fastgltf::Node::TRS{
-            .translation = {0, 0, 0},
-            .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
-            .scale = {0.833f / 64.f, 0.833f / 64.f, 1.f / 64.f},
+                .translation = {0, 0, 0},
+                .rotation = {0, 0, 0, 1},
+                .scale = {1, 1, 1},
         };
+
+        // TODO: Write extras when fastgltf supports them
 
         // Don't emit a mesh for empty sectors. Their nodes will define them
         if (sector.faces.empty()) {
@@ -350,6 +366,26 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map) {
     texcoords_buffer.byteLength = texcoords.size();
     texcoords_buffer.name = "Texcoords";
     texcoords_buffer.data = fastgltf::sources::Vector{.bytes = texcoords};
+
+    if (options.export_things) {
+        // Put all the Things at the end
+        auto thing_counter = 0u;
+        for (const auto& thing : map.things) {
+            model.nodes[parent_node_idx].children.emplace_back(model.nodes.size());
+
+            auto& thing_node = model.nodes.emplace_back();
+            thing_node.name = std::format("Thing {}", thing_counter);
+
+            const auto rotation_quat = glm::angleAxis(glm::radians(thing.angle), glm::vec3{ 1, 0, 0 });
+            thing_node.transform = fastgltf::Node::TRS{
+                .translation = {thing.position.x, thing.position.y, 0},  // TODO: Height, based on the sector it's in? Oh no
+                .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
+                .scale = {1, 1, 1},
+            };
+
+            thing_counter++;
+        }
+    }
 
     return model;
 }

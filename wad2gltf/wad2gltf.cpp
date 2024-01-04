@@ -37,18 +37,15 @@ map, and one Mesh Primitive for each sector.)"
     };
 
     auto wad_filename = std::filesystem::path{};
-    auto map_to_extract = std::string{};
-    auto output_file = std::filesystem::path{};
-    auto export_pbr = false;
     auto export_emission_textures = false;
-    auto export_things = false;
+    auto extraction_options = MapExtractionOptions{};
+    auto export_options = GltfExportOptions{};
 
     app.add_option("-f,--file", wad_filename, "Name of the WAD file to extract a map from")->required();
-    app.add_option("-m,--map", map_to_extract, "Name of the map to extract")->required();
-    app.add_option("-o,--output", output_file, "Output the glTF data to this file")->required();
-    // app.add_flag("-p,--pbr", export_pbr, "Attempt to generate PBR metallic/roughness materials for each map texture. Will likely yield poor results, but may improve compatibility with NIH glTF renderers");
+    app.add_option("-m,--map", extraction_options.map_name, "Name of the map to extract")->required();
+    app.add_option("-o,--output", export_options.output_file, "Output the glTF data to this file")->required();
     // app.add_flag("-e,--emission", export_emission_textures, "Generate emission textures my applying the palette for a dimly-lit room. This may or may not yield decent results");
-    // app.add_flag("-t, --things", export_things, "Output the Things from the WAD file. Each Thing will be a Node in the glTF file, with some extras describing the type of Thing");
+    app.add_flag("-t, --things", export_options.export_things, "Output the Things from the WAD file. Each Thing will be a Node in the glTF file, with some extras describing the type of Thing");
     app.positionals_at_end();
 
     try {
@@ -62,27 +59,27 @@ map, and one Mesh Primitive for each sector.)"
 
         std::print(std::cout, "Loaded WAD file {}\n", wad_filename.string());
 
-        const auto map = create_mesh_from_map(wad, map_to_extract);
+        const auto map = create_mesh_from_map(wad, extraction_options);
 
-        std::print(std::cout, "Extracted map {} from WAD\n", map_to_extract);
+        std::print(std::cout, "Extracted map {} from WAD\n", extraction_options.map_name);
 
         // Load all the textures for each sector
 
-        const auto gltf_map = export_to_gltf(map_to_extract, map);
+        const auto gltf_map = export_to_gltf(extraction_options.map_name, map, export_options);
         std::print(std::cout, "Generated glTF data\n");
 
         auto exporter = fastgltf::FileExporter{};
         exporter.setImagePath("textures");
 
-        const auto result = exporter.writeGltfJson(gltf_map, output_file, fastgltf::ExportOptions::PrettyPrintJson);
+        const auto result = exporter.writeGltfJson(gltf_map, export_options.output_file, fastgltf::ExportOptions::PrettyPrintJson);
 
         if (result != fastgltf::Error::None) {
             std::print(std::cout, "Could not write glTF file: {}\n", fastgltf::getErrorMessage(result));
         } else {
-            std::print(std::cout, "Wrote glTF to file {}\n", output_file.string());
+            std::print(std::cout, "Wrote glTF to file {}\n", export_options.output_file.string());
         }
 
-        const auto images_folder = output_file.parent_path() / "textures";
+        const auto images_folder = export_options.output_file.parent_path() / "textures";
         std::filesystem::create_directories(images_folder);
         for (const auto& texture : map.textures) {
             export_texture(texture, images_folder, wad);

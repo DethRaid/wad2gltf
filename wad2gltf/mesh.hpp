@@ -30,7 +30,7 @@ struct Face {
 
 struct Flat {
     std::vector<glm::vec3> vertices;
-    std::vector<uint32_t> indices;
+    std::vector<uint16_t> indices;
     uint32_t texture_index;    
 };
 
@@ -39,12 +39,26 @@ struct Sector {
 
     Flat ceiling;
     Flat floor;
+
+    int16_t light_level;
+    int16_t special_type;
+    int16_t tag_number;
+};
+
+struct Thing {
+    glm::vec2 position;
+    float angle;
+
+    int16_t type;
+    uint16_t flags;
 };
 
 struct Map {
     std::vector<Sector> sectors;
 
     std::vector<DecodedTexture> textures;
+
+    std::vector<Thing> things;
 
     /**
      * \brief Finds the index of the requested texture in the textures array, or loads it if is doesn't exist

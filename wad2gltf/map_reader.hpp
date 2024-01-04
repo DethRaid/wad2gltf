@@ -1,7 +1,6 @@
 #pragma once
 
-#include <vector>
-#include <string_view>
+#include <string>
 
 #include "mesh.hpp"
 #include "wad.hpp"
@@ -12,15 +11,19 @@
  * Contains utilities to create a mesh from a WAD map
  */
 
+struct MapExtractionOptions {
+    std::string map_name;
+};
+
 /**
  * Creates a mesh from a map in the WAD data
  *
  * \param wad WAD data that contains the map
- * \param map_name Name of the map to convert
+ * \param options Options for what data to extract
  * \return A mesh that contains the map
  *
  * \throws std::runtime_error if there's an error at runtime
  *
  * TODO: More options, such as trying to combine faces that use the same texture
  */
-Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name);
+Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& options);

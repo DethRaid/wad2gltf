@@ -231,8 +231,8 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
     return vertices_in_loop;
 }
 
-Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
-    auto itr = wad.find_lump(map_name);
+Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& options) {
+    auto itr = wad.find_lump(options.map_name);
 
     std::print(std::cout, "Loaded map lump {}\n", itr->name);
 
@@ -267,6 +267,7 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
     validate_lump_name(*nodes_itr, "NODES");
     validate_lump_name(*sectors_itr, "SECTORS");
 
+    const auto things = wad.get_lump_data<wad::Thing>(*things_itr);
     const auto linedefs = wad.get_lump_data<wad::LineDef>(*linedefs_itr);
     const auto sidedefs = wad.get_lump_data<wad::SideDef>(*sidedefs_itr);
     const auto vertexes = wad.get_lump_data<wad::Vertex>(*vertexes_itr);
@@ -295,8 +296,23 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
      */
 
     auto map = Map{};
+    map.things.reserve(things.size());
     map.sectors.resize(sectors.size());
     map.textures.reserve(sectors.size() * 2);
+
+    // Copy the Things
+    for(const auto& thing : things) {
+        map.things.emplace_back(glm::vec2{thing.x, thing.y}, static_cast<float>(thing.facing_angle), thing.type, thing.flags);
+    }
+
+    // Copy the sector info into our data structure
+    for(auto i = 0u; i < sectors.size(); i++) {
+        const auto& sector = sectors[i];
+        auto& map_sector = map.sectors[i];
+        map_sector.light_level = sector.light_level;
+        map_sector.special_type = sector.special_type;
+        map_sector.tag_number = sector.tag_number;
+    }
 
     auto linedefs_per_sector = std::vector<std::vector<std::pair<uint16_t, uint16_t>>>(sectors.size());
 
@@ -338,8 +354,8 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
         }
     }
 
-    // We've generated one or more polygons for each sector. Let's hope there's only one
-    // Split the polygons into triangles, using the algorithm described in https://www.niser.ac.in/~aritra/CG/Triangulation.pdf
+    // Try to split the sector into its line loops and triangulate them
+    // This doesn't work for all sectors, unfortunately
     for (auto i = 0u; i < linedefs_per_sector.size(); i++) {
         const auto& sector_linedefs = linedefs_per_sector[i];
 
@@ -358,7 +374,7 @@ Map create_mesh_from_map(const wad::WAD& wad, std::string_view map_name) {
         // TODO: Split the vertices into multiple polygons
         // A line loop encloses a polygon if the sum of the angles where the lines point inside is greater than the sum
         // of the angles where the lines point outside. 
-        const auto ceiling_indices = mapbox::earcut<uint32_t>(polygon_line_loops);
+        const auto ceiling_indices = mapbox::earcut<uint16_t>(polygon_line_loops);
 
         // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
         auto& map_sector = map.sectors[i];

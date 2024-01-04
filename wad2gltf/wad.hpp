@@ -1,5 +1,6 @@
 #pragma once
 
+#define __STDC_WANT_LIB_EXT1__ 1
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -8,48 +9,9 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "wad_name.hpp"
+
 namespace wad {
-    struct Name {
-        char val[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        bool operator==(std::string_view str) const;
-
-        bool operator==(const Name& other) const;
-
-        std::string to_string() const;
-
-        bool is_valid() const;
-    };
-
-    inline bool Name::operator==(const std::string_view str) const {
-        return memcmp(val, str.data(), std::min(str.size(), 8ull)) == 0;
-    }
-
-    inline bool Name::operator==(const Name& other) const {
-        for (auto i = 0; i < 8; i++) {
-            if (toupper(static_cast<unsigned char>(val[i])) != toupper(static_cast<unsigned char>(other.val[i]))) {
-                return false;
-            }
-
-            if (val[i] == other.val[i] && val[i] == '\0') {
-                // We've iterated to the end of the string, and we've reached the null terminator. The names are equal
-                return true;
-            }
-        }
-
-        // We reached the end of the string without finding different characters. These are both eight-character names
-        return true;
-    }
-
-    inline std::string Name::to_string() const {
-        const auto length = strnlen_s(val, 8);
-        return std::string{val, length};
-    }
-
-    inline bool Name::is_valid() const {
-        return val[0] != '\0' && val[0] != '-';
-    }
-
     struct Header {
         /**
          * Identifier for the file. Must be either PWAD or IWAD
@@ -308,20 +270,19 @@ namespace wad {
         // There's an unknown number of posts in the column. We read them until we get a post with a row of 0xFF
         Post post_start;
     };
+
+    struct Thing {
+        int16_t x;
+        int16_t y;
+        int16_t facing_angle;
+        int16_t type;
+        uint16_t flags;
+
+        constexpr static inline uint16_t SkillLevel1And2    = 0x0001;
+        constexpr static inline uint16_t SkillLevel3        = 0x0002;
+        constexpr static inline uint16_t SkillLevel4And5    = 0x0004;
+        constexpr static inline uint16_t Ambush             = 0x0008;
+        constexpr static inline uint16_t MultiplayerOnly    = 0x0010;
+    };
 }
 
-template <>
-struct std::formatter<wad::Name> : std::formatter<std::string> {
-    auto format(const wad::Name& name, format_context& ctx) const {
-        const auto length = strnlen_s(name.val, 8);
-        const auto view = std::string_view{name.val, length};
-        return formatter<string>::format(std::format("{}", view), ctx);
-    }
-};
-
-template <>
-struct std::hash<wad::Name> {
-    std::size_t operator()(const wad::Name& name) const noexcept {
-        return std::hash<std::string>{}(name.to_string());
-    }
-};
