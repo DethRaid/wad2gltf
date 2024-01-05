@@ -213,7 +213,8 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
         vertices_in_loop.emplace_back(std::array{vertex.x, vertex.y});
 
         // Find the line that continues the loop
-        for (auto i = 0u; i < sector_linedefs.size(); i++) {
+        auto found_continuation = false;
+        for (const auto& i : remaining_lines) {
             const auto& test_line = sector_linedefs[i];
             if (test_line.first == cur_line.second) {
                 if (visited_lines.contains(i)) {
@@ -222,13 +223,64 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
                 } else {
                     // This is a continuation of the loop, keep iterating
                     cur_line_idx = i;
+                    found_continuation = true;
                     break;
                 }
             }
         }
+
+        // If none of the line segments in `remaining_lines` continue the current loop, return
+        if (!found_continuation) {
+            iterating = false;
+        }
     }
 
     return vertices_in_loop;
+}
+
+void emit_ceiling_and_floor(
+    const wad::WAD& wad, const std::span<const wad::Sector> sectors, Map& map, const uint32_t i,
+    const std::vector<std::vector<std::array<int16_t, 2>>>& polygon_line_loops,
+    const std::vector<unsigned short>& ceiling_indices
+) {
+    // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
+    auto& map_sector = map.sectors[i];
+    auto& ceiling = map_sector.ceilings.emplace_back();
+    auto& floor = map_sector.floors.emplace_back();
+
+    const auto& sector = sectors[i];
+    ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
+    floor.texture_index = map.get_flat_index(sector.floor_texture, wad);
+
+    // Flatten the vertices arrays
+    auto vertices = std::vector<glm::vec2>{};
+    vertices.reserve(polygon_line_loops.size() * polygon_line_loops[0].size());
+    for (const auto& loop_vertices : polygon_line_loops) {
+        for (const auto& vertex : loop_vertices) {
+            vertices.emplace_back(vertex[0], vertex[1]);
+        }
+    }
+
+    ceiling.vertices.reserve(vertices.size());
+    floor.vertices.reserve(vertices.size());
+
+    for (const auto& vertex : vertices) {
+        ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
+        floor.vertices.emplace_back(vertex[0], vertex[1], sector.floor_height);
+    }
+
+    ceiling.indices.resize(ceiling_indices.size());
+    floor.indices.resize(ceiling_indices.size());
+
+    for (auto triangle_index = 0u; triangle_index < ceiling_indices.size(); triangle_index += 3) {
+        ceiling.indices[triangle_index] = ceiling_indices[triangle_index + 2];
+        ceiling.indices[triangle_index + 1] = ceiling_indices[triangle_index + 1];
+        ceiling.indices[triangle_index + 2] = ceiling_indices[triangle_index];
+
+        floor.indices[triangle_index] = ceiling_indices[triangle_index];
+        floor.indices[triangle_index + 1] = ceiling_indices[triangle_index + 1];
+        floor.indices[triangle_index + 2] = ceiling_indices[triangle_index + 2];
+    }
 }
 
 Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& options) {
@@ -301,12 +353,14 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
     map.textures.reserve(sectors.size() * 2);
 
     // Copy the Things
-    for(const auto& thing : things) {
-        map.things.emplace_back(glm::vec2{thing.x, thing.y}, static_cast<float>(thing.facing_angle), thing.type, thing.flags);
+    for (const auto& thing : things) {
+        map.things.emplace_back(
+            glm::vec2{thing.x, thing.y}, static_cast<float>(thing.facing_angle), thing.type, thing.flags
+        );
     }
 
     // Copy the sector info into our data structure
-    for(auto i = 0u; i < sectors.size(); i++) {
+    for (auto i = 0u; i < sectors.size(); i++) {
         const auto& sector = sectors[i];
         auto& map_sector = map.sectors[i];
         map_sector.light_level = sector.light_level;
@@ -375,42 +429,15 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         // A line loop encloses a polygon if the sum of the angles where the lines point inside is greater than the sum
         // of the angles where the lines point outside. 
         const auto ceiling_indices = mapbox::earcut<uint16_t>(polygon_line_loops);
-
-        // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
-        auto& map_sector = map.sectors[i];
-
-        const auto& sector = sectors[i];
-        map_sector.ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
-        map_sector.floor.texture_index = map.get_flat_index(sector.floor_texture, wad);
-
-        // Flatten the vertices arrays
-        auto vertices = std::vector<glm::vec2>{};
-        vertices.reserve(polygon_line_loops.size() * polygon_line_loops[0].size());
-        for (const auto& loop_vertices : polygon_line_loops) {
-            for (const auto& vertex : loop_vertices) {
-                vertices.emplace_back(vertex[0], vertex[1]);
+        if (!ceiling_indices.empty()) {
+            emit_ceiling_and_floor(wad, sectors, map, i, polygon_line_loops, ceiling_indices);
+        } else {
+            // We couldn't make one polygon out of the line loops. Maybe the line loops describe different islands
+            for (const auto& line_loop : polygon_line_loops) {
+                const auto cur_island_vertices = std::vector<std::vector<std::array<int16_t, 2>>>{ line_loop };
+                const auto island_indices = mapbox::earcut<uint16_t>(cur_island_vertices);
+                emit_ceiling_and_floor(wad, sectors, map, i, cur_island_vertices, island_indices);
             }
-        }
-
-        map_sector.ceiling.vertices.reserve(vertices.size());
-        map_sector.floor.vertices.reserve(vertices.size());
-
-        for (const auto& vertex : vertices) {
-            map_sector.ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
-            map_sector.floor.vertices.emplace_back(vertex[0], vertex[1], sector.floor_height);
-        }
-
-        map_sector.ceiling.indices.resize(ceiling_indices.size());
-        map_sector.floor.indices.resize(ceiling_indices.size());
-
-        for (auto triangle_index = 0u; triangle_index < ceiling_indices.size(); triangle_index += 3) {
-            map_sector.ceiling.indices[triangle_index] = ceiling_indices[triangle_index + 2];
-            map_sector.ceiling.indices[triangle_index + 1] = ceiling_indices[triangle_index + 1];
-            map_sector.ceiling.indices[triangle_index + 2] = ceiling_indices[triangle_index];
-
-            map_sector.floor.indices[triangle_index] = ceiling_indices[triangle_index];
-            map_sector.floor.indices[triangle_index + 1] = ceiling_indices[triangle_index + 1];
-            map_sector.floor.indices[triangle_index + 2] = ceiling_indices[triangle_index + 2];
         }
     }
 
