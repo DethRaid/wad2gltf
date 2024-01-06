@@ -288,7 +288,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
         // TODO: Write extras when fastgltf supports them
 
         // Don't emit a mesh for empty sectors. Their nodes will define them
-        if (sector.faces.empty()) {
+        if (sector.faces.empty() && sector.ceiling.indices.empty() && sector.floor.indices.empty()) {
             sector_index++;
             continue;
         }
@@ -303,11 +303,12 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
         }
 
         // Add the floor and ceiling primitives
-        for(const auto& ceiling : sector.ceilings) {
-            add_flat(ceiling, glm::vec3{ 0, 0, -1 }, model, positions, normals, texcoords, indices, mesh);
+        // The floor or ceiling may be empty for F_SKYn (where the sky should be drawn)
+        if (!sector.ceiling.indices.empty()) {
+            add_flat(sector.ceiling, glm::vec3{ 0, 0, -1 }, model, positions, normals, texcoords, indices, mesh);
         }
-        for(const auto& floor : sector.floors) {
-            add_flat(floor, glm::vec3{ 0, 0, 1 }, model, positions, normals, texcoords, indices, mesh);
+        if (!sector.floor.indices.empty()) {
+            add_flat(sector.floor, glm::vec3{ 0, 0, 1 }, model, positions, normals, texcoords, indices, mesh);
         }
 
         sector_index++;
