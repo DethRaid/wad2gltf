@@ -30,6 +30,8 @@ namespace wad {
         std::string to_string() const;
 
         bool is_valid() const;
+
+        bool is_none() const;
     };
 
     inline bool Name::operator==(const std::string_view str) const {
@@ -58,7 +60,12 @@ namespace wad {
     }
 
     inline bool Name::is_valid() const {
-        return val[0] != '\0' && val[0] != '-';
+        return val[0] != '\0';
+    }
+
+    inline bool Name::is_none() const {
+        // The Unofficial Doom Specs state that '-' means "no texture" or transparent (not rendered)
+        return val[0] == '-' && val[1] == '\0';
     }
 }
 
