@@ -37,8 +37,8 @@ struct Flat {
 struct Sector {
     std::vector<Face> faces;
 
-    std::vector<Flat> ceilings;
-    std::vector<Flat> floors;
+    Flat ceiling;
+    Flat floor;
 
     int16_t light_level;
     int16_t special_type;

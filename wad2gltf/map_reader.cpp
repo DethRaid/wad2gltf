@@ -203,13 +203,11 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
     const std::span<const wad::Vertex> vertexes, const std::vector<std::pair<uint16_t, uint16_t>>& sector_linedefs,
     std::vector<uint32_t>& remaining_lines
 ) {
-    auto visited_lines = std::set<size_t>{};
     auto vertices_in_loop = std::vector<std::array<int16_t, 2>>{};
 
     auto cur_line_idx = remaining_lines[0];
     auto iterating = true;
-    while (iterating) {
-        visited_lines.emplace(cur_line_idx);
+    do {
         std::erase(remaining_lines, cur_line_idx);
         const auto& cur_line = sector_linedefs[cur_line_idx];
 
@@ -218,29 +216,74 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
         vertices_in_loop.emplace_back(std::array{vertex.x, vertex.y});
 
         // Find the line that continues the loop
-        auto found_continuation = false;
-        for (const auto& i : remaining_lines) {
-            const auto& test_line = sector_linedefs[i];
+        iterating = false;
+        for (auto i = 0u; i < remaining_lines.size(); i++) {
+            auto idx = remaining_lines[i];
+            const auto& test_line = sector_linedefs[idx];
             if (test_line.first == cur_line.second) {
-                if (visited_lines.contains(i)) {
-                    // We've reached the start of the loop. Return the loop
-                    return vertices_in_loop;
-                } else {
-                    // This is a continuation of the loop, keep iterating
-                    cur_line_idx = i;
-                    found_continuation = true;
-                    break;
-                }
+                // This is a continuation of the loop, keep iterating
+                iterating = true;
+                cur_line_idx = idx;
+                break;
             }
         }
+    } while (iterating);
 
-        // If none of the line segments in `remaining_lines` continue the current loop, return
-        if (!found_continuation) {
-            iterating = false;
+    return vertices_in_loop;
+}
+
+bool is_polygon_clockwise(
+    const std::vector<std::array<int16_t, 2>>& polygon
+) {
+    int32_t area = 0;
+    for (auto i = 0u; i < polygon.size(); i++) {
+        auto j = (i + 1) % polygon.size();
+
+        const auto& v0 = polygon[i];
+        const auto& v1 = polygon[j];
+
+        area += (int32_t)v0[0] * (int32_t)v1[1] - (int32_t)v1[0] * (int32_t)v0[1];
+    }
+
+    return area > 0;
+}
+
+// Adapted from https://paulbourke.net/geometry/polygonmesh/#insidepoly
+// NOTE: vertex positions get promoted from int16 to int32 to prevent overflow
+bool is_point_in_polygon(
+    const std::array<int16_t, 2>& p,
+    const std::vector<std::array<int16_t, 2>>& polygon
+) {
+    bool result = false;
+    const int32_t p_x = p[0];
+    const int32_t p_y = p[1];
+    for (size_t i = 0, j = polygon.size()-1; i < polygon.size(); j = i++) {
+        const int32_t i_x = polygon[i][0];
+        const int32_t i_y = polygon[i][1];
+        const int32_t j_x = polygon[j][0];
+        const int32_t j_y = polygon[j][1];
+        if ((((p_y >= i_y) && (p_y < j_y)) ||
+             ((p_y >= j_y) && (p_y < i_y))) &&
+            (p_x < ((j_x - i_x) * (p_y - i_y) / (j_y - i_y) + i_x))
+        ) {
+            result = !result;
         }
     }
 
-    return vertices_in_loop;
+    return result;
+}
+
+bool is_polygon_in_polygon(
+    const std::vector<std::array<int16_t, 2>>& candidate_hole,
+    const std::vector<std::array<int16_t, 2>>& outer_polygon
+) {
+    for (const auto& p : candidate_hole) {
+        if (is_point_in_polygon(p, outer_polygon)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void emit_ceiling_and_floor(
@@ -250,8 +293,8 @@ void emit_ceiling_and_floor(
 ) {
     // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
     auto& map_sector = map.sectors[i];
-    auto& ceiling = map_sector.ceilings.emplace_back();
-    auto& floor = map_sector.floors.emplace_back();
+    auto& ceiling = map_sector.ceiling;
+    auto& floor = map_sector.floor;
 
     const auto& sector = sectors[i];
     ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
@@ -407,7 +450,7 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         }
 
         linedefs_per_sector.at(front_sidedef.sector_number).emplace_back(linedef.start_vertex, linedef.end_vertex);
-        if (linedef.back_sidedef != -1) {
+        if (linedef.flags & wad::LineDef::TwoSided) {
             const auto& back_sidedef = sidedefs[linedef.back_sidedef];
             linedefs_per_sector.at(back_sidedef.sector_number).emplace_back(linedef.end_vertex, linedef.start_vertex);
         }
@@ -415,36 +458,122 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
 
     // TODO: If the sector uses a F_SKYn texture for its ceiling, don't emit a ceiling for it
 
-    // Try to split the sector into its line loops and triangulate them
-    // This doesn't work for all sectors, unfortunately
+    // Split the sector into its line loops and triangulate them
     for (auto i = 0u; i < linedefs_per_sector.size(); i++) {
         const auto& sector_linedefs = linedefs_per_sector[i];
 
         auto remaining_lines = std::vector<uint32_t>(sector_linedefs.size());
         std::iota(remaining_lines.begin(), remaining_lines.end(), 0);
 
-        auto polygon_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
-
-        while (!remaining_lines.empty()) {
-            auto loop = extract_line_loop(vertexes, sector_linedefs, remaining_lines);
-            polygon_line_loops.emplace_back(loop);
+        if (remaining_lines.empty()) {
+            continue;
         }
 
-        // This produces zero indices for some sectors - namely, the slightly-higher blue carpet in the starting room
-        // of E1M1. It seems that this fails if the provided vertices form multiple polygons
-        // TODO: Split the vertices into multiple polygons
-        // A line loop encloses a polygon if the sum of the angles where the lines point inside is greater than the sum
-        // of the angles where the lines point outside. 
-        const auto ceiling_indices = mapbox::earcut<uint16_t>(polygon_line_loops);
-        if (!ceiling_indices.empty()) {
-            emit_ceiling_and_floor(wad, sectors, map, i, polygon_line_loops, ceiling_indices);
-        } else {
-            // We couldn't make one polygon out of the line loops. Maybe the line loops describe different islands
-            for (const auto& line_loop : polygon_line_loops) {
-                const auto cur_island_vertices = std::vector<std::vector<std::array<int16_t, 2>>>{ line_loop };
-                const auto island_indices = mapbox::earcut<uint16_t>(cur_island_vertices);
-                emit_ceiling_and_floor(wad, sectors, map, i, cur_island_vertices, island_indices);
+        auto sector_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
+        do {
+            auto loop = extract_line_loop(vertexes, sector_linedefs, remaining_lines);
+
+            if (!is_polygon_clockwise(loop)) {
+                std::reverse(loop.begin(), loop.end());
             }
+
+            sector_line_loops.emplace_back(loop);
+        } while (!remaining_lines.empty());
+
+        auto exterior_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
+        auto interior_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
+        for (size_t j = 0u; j < sector_line_loops.size(); j++) {
+            auto& loop = sector_line_loops[j];
+
+            bool is_hole = false;
+            for (size_t k = 0u; k < sector_line_loops.size(); k++) {
+                if (k == j) {
+                    continue;
+                }
+
+                if (is_polygon_in_polygon(loop, sector_line_loops[k])) {
+                    is_hole = true;
+                    break;
+                }
+            }
+
+            if (is_hole) {
+                interior_line_loops.emplace_back(loop);
+            } else {
+                exterior_line_loops.emplace_back(loop);
+            }
+        }
+
+        uint32_t sector_vertex_count = 0u;
+        auto sector_ceiling_indices = std::vector<uint32_t>{};
+        sector_line_loops.clear();
+
+        for (const auto& polygon : exterior_line_loops) {
+            auto polygon_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{polygon};
+
+            for (size_t j = 0u; j < interior_line_loops.size(); /**/) {
+                const auto& loop = interior_line_loops[j];
+                if (is_polygon_in_polygon(loop, polygon)) {
+                    polygon_line_loops.emplace_back(loop);
+                    interior_line_loops.erase(interior_line_loops.begin() + j);
+                    // NOTE: j is not incremented as we've erased it from the list that's being iterated
+                    continue;
+                }
+
+                j++;
+            }
+
+            // First loop is assumed to be the polygon, and subsequent loops are holes
+            auto polygon_ceiling_indices = mapbox::earcut<uint16_t>(polygon_line_loops);
+            // As Earcut was run on the individual polygon, the indices always start at 0 and must be corrected
+            for (auto& index : polygon_ceiling_indices) {
+                index += sector_vertex_count;
+            }
+            sector_ceiling_indices.insert(sector_ceiling_indices.end(), polygon_ceiling_indices.begin(), polygon_ceiling_indices.end());
+
+            sector_line_loops.insert(sector_line_loops.end(), polygon_line_loops.begin(), polygon_line_loops.end());
+            sector_vertex_count += (uint32_t)polygon_line_loops.size();
+        }
+
+        if (!interior_line_loops.empty()) {
+            std::cout << std::format("WARNING: Sector {} has {} remaining inner line loops!\n", i, interior_line_loops.size());
+        }
+
+        // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
+        auto& map_sector = map.sectors[i];
+
+        const auto& sector = sectors[i];
+        map_sector.ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
+        map_sector.floor.texture_index = map.get_flat_index(sector.floor_texture, wad);
+
+        // Flatten the vertices arrays
+        auto vertices = std::vector<glm::vec2>{};
+        vertices.reserve(sector_vertex_count);
+        for (const auto& loop_vertices : sector_line_loops) {
+            for (const auto& vertex : loop_vertices) {
+                vertices.emplace_back(vertex[0], vertex[1]);
+            }
+        }
+
+        map_sector.ceiling.vertices.reserve(vertices.size());
+        map_sector.floor.vertices.reserve(vertices.size());
+
+        for (const auto& vertex : vertices) {
+            map_sector.ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
+            map_sector.floor.vertices.emplace_back(vertex[0], vertex[1], sector.floor_height);
+        }
+
+        map_sector.ceiling.indices.resize(sector_ceiling_indices.size());
+        map_sector.floor.indices.resize(sector_ceiling_indices.size());
+
+        for (auto triangle_index = 0u; triangle_index < sector_ceiling_indices.size(); triangle_index += 3) {
+            map_sector.ceiling.indices[triangle_index] = sector_ceiling_indices[triangle_index + 2];
+            map_sector.ceiling.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
+            map_sector.ceiling.indices[triangle_index + 2] = sector_ceiling_indices[triangle_index];
+
+            map_sector.floor.indices[triangle_index] = sector_ceiling_indices[triangle_index];
+            map_sector.floor.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
+            map_sector.floor.indices[triangle_index + 2] = sector_ceiling_indices[triangle_index + 2];
         }
     }
 
