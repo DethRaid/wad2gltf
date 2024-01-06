@@ -65,6 +65,11 @@ void emit_face(
     std::vector<Face>& destination, const wad::WAD& wad,
     Map& map
 ) {
+    if(texture_name.is_none()) {
+        // The Unofficial Doom Specs state that "-" means not rendered, so don't generate the face
+        return;
+    }
+
     auto face = create_face(v0, v1, bottom, top);
     face.texture_index = map.get_texture_index(texture_name, wad);
 

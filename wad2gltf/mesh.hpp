@@ -91,6 +91,9 @@ inline uint32_t Map::get_flat_index(const wad::Name& flat_name, const wad::WAD& 
     if (!flat_name.is_valid()) {
         throw std::runtime_error{ "Texture name is not valid" };
     }
+    if (flat_name.is_none()) {
+        throw std::runtime_error{ "Sector floor/ceiling name cannot be '-'." };
+    }
 
     for (auto i = 0u; i < textures.size(); i++) {
         const auto& texture = textures[i];
