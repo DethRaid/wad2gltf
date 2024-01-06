@@ -487,7 +487,7 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         }
 
         if (!interior_line_loops.empty()) {
-            std::print(std::cout, "WARNING: Sector {} has {} remaining inner line loops!\n", i, interior_line_loops.size());
+            std::cout << std::format("WARNING: Sector {} has {} remaining inner line loops!\n", i, interior_line_loops.size());
         }
 
         // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
