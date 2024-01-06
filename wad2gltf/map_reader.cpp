@@ -408,6 +408,8 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         }
     }
 
+    // TODO: If the sector uses a F_SKYn texture for its ceiling, don't emit a ceiling for it
+
     // Try to split the sector into its line loops and triangulate them
     // This doesn't work for all sectors, unfortunately
     for (auto i = 0u; i < linedefs_per_sector.size(); i++) {
