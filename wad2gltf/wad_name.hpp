@@ -32,6 +32,8 @@ namespace wad {
         bool is_valid() const;
 
         bool is_none() const;
+
+        bool starts_with(std::string_view prefix) const;
     };
 
     inline bool Name::operator==(const std::string_view str) const {
@@ -66,6 +68,14 @@ namespace wad {
     inline bool Name::is_none() const {
         // The Unofficial Doom Specs state that '-' means "no texture" or transparent (not rendered)
         return val[0] == '-' && val[1] == '\0';
+    }
+
+    inline bool Name::starts_with(const std::string_view prefix) const {
+        if(prefix.size() > 8) {
+            return false;
+        }
+
+        return memcmp(val, prefix.data(), prefix.size()) == 0;
     }
 }
 

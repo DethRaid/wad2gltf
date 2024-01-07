@@ -532,7 +532,7 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             sector_ceiling_indices.insert(sector_ceiling_indices.end(), polygon_ceiling_indices.begin(), polygon_ceiling_indices.end());
 
             sector_line_loops.insert(sector_line_loops.end(), polygon_line_loops.begin(), polygon_line_loops.end());
-            sector_vertex_count += (uint32_t)polygon_line_loops.size();
+            sector_vertex_count += static_cast<uint32_t>(polygon_line_loops.size());
         }
 
         if (!interior_line_loops.empty()) {
@@ -543,7 +543,12 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         auto& map_sector = map.sectors[i];
 
         const auto& sector = sectors[i];
-        map_sector.ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
+
+        const auto emit_ceiling = !sector.ceiling_texture.starts_with("F_SKY");
+
+        if (emit_ceiling) {
+            map_sector.ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
+        }
         map_sector.floor.texture_index = map.get_flat_index(sector.floor_texture, wad);
 
         // Flatten the vertices arrays
@@ -555,21 +560,29 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             }
         }
 
-        map_sector.ceiling.vertices.reserve(vertices.size());
+        if (emit_ceiling) {
+            map_sector.ceiling.vertices.reserve(vertices.size());
+        }
         map_sector.floor.vertices.reserve(vertices.size());
 
         for (const auto& vertex : vertices) {
-            map_sector.ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
+            if (emit_ceiling) {
+                map_sector.ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
+            }
             map_sector.floor.vertices.emplace_back(vertex[0], vertex[1], sector.floor_height);
         }
 
-        map_sector.ceiling.indices.resize(sector_ceiling_indices.size());
+        if (emit_ceiling) {
+            map_sector.ceiling.indices.resize(sector_ceiling_indices.size());
+        }
         map_sector.floor.indices.resize(sector_ceiling_indices.size());
 
         for (auto triangle_index = 0u; triangle_index < sector_ceiling_indices.size(); triangle_index += 3) {
-            map_sector.ceiling.indices[triangle_index] = sector_ceiling_indices[triangle_index + 2];
-            map_sector.ceiling.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
-            map_sector.ceiling.indices[triangle_index + 2] = sector_ceiling_indices[triangle_index];
+            if (emit_ceiling) {
+                map_sector.ceiling.indices[triangle_index] = sector_ceiling_indices[triangle_index + 2];
+                map_sector.ceiling.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
+                map_sector.ceiling.indices[triangle_index + 2] = sector_ceiling_indices[triangle_index];
+            }
 
             map_sector.floor.indices[triangle_index] = sector_ceiling_indices[triangle_index];
             map_sector.floor.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
