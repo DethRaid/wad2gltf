@@ -4,9 +4,7 @@
 
 This tool extracts a map from a WAD file and writes it to a glTF file. It created one glTF Node and Mesh for each sector, and creates up to three Primitives for each sidedef (upper, middle, and lower). It also extracts the textures from the WAD and converts the textures to PNG 
 
-There's a couple errors from how some sectors contain multiple non-concentric sidedef loops
-
-This tool does not yet export any THINGS, nor does it export the original flags and tags for the sectors and linedefs it processes. That's coming in time
+This tool exports THINGS, but it does not preserve their IDs nor does it place them at the correct height in the world
 
 This tool does not export any of the original culling information, and it's not likely to. Modern computers are able to render an entire DOOM level with ease
 

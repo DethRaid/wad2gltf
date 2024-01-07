@@ -431,7 +431,7 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         }
 
         // Are we at the boundary between two sky sectors? If so, don't emit any faces
-        auto skip_lower = false;
+        auto skip_upper = false;
         if(linedef.back_sidedef != -1) {
             const auto& back_sidedef = sidedefs[linedef.back_sidedef];
 
@@ -439,7 +439,7 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             const auto& back_sector = sectors[back_sidedef.sector_number];
 
             if(front_sector.ceiling_texture.starts_with("F_SKY") && back_sector.ceiling_texture.starts_with("F_SKY")) {
-                skip_lower = true;
+                skip_upper = true;
             }
         }
 
@@ -449,7 +449,7 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             const auto& back_sidedef = sidedefs[linedef.back_sidedef];
 
             const auto& [back_faces, front_faces] = generate_faces_for_sector_boundary(
-                linedef, start_vertex, end_vertex, sidedefs, sectors, wad, map, skip_lower
+                linedef, start_vertex, end_vertex, sidedefs, sectors, wad, map, skip_upper
             );
 
             auto& front_sector_faces = map.sectors[front_sidedef.sector_number].faces;
