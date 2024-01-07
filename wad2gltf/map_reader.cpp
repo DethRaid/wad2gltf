@@ -95,7 +95,7 @@ void emit_face(
 SectorBoundaryFaces generate_faces_for_sector_boundary(
     const wad::LineDef& linedef, const wad::Vertex& start_vertex, const wad::Vertex& end_vertex,
     const std::span<const wad::SideDef> sidedefs, const std::span<const wad::Sector> sectors, const wad::WAD& wad,
-    Map& map
+    Map& map, const bool skip_upper
 ) {
     auto boundary = SectorBoundaryFaces{};
 
@@ -155,7 +155,7 @@ SectorBoundaryFaces generate_faces_for_sector_boundary(
     }
 
     // Emit middle-to-ceiling face
-    if (front_sector.ceiling_height != back_sector.ceiling_height) {
+    if (front_sector.ceiling_height != back_sector.ceiling_height && !skip_upper) {
         const auto pegged_height = linedef.flags & wad::LineDef::UpperTextureUnpegged
                                        ? higher_ceiling_height
                                        : higher_floor_height;
@@ -424,13 +424,32 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
 
         const auto& front_sidedef = sidedefs[linedef.front_sidedef];
 
+        linedefs_per_sector.at(front_sidedef.sector_number).emplace_back(linedef.start_vertex, linedef.end_vertex);
+        if (linedef.flags & wad::LineDef::TwoSided) {
+            const auto& back_sidedef = sidedefs[linedef.back_sidedef];
+            linedefs_per_sector.at(back_sidedef.sector_number).emplace_back(linedef.end_vertex, linedef.start_vertex);
+        }
+
+        // Are we at the boundary between two sky sectors? If so, don't emit any faces
+        auto skip_lower = false;
+        if(linedef.back_sidedef != -1) {
+            const auto& back_sidedef = sidedefs[linedef.back_sidedef];
+
+            const auto& front_sector = sectors[front_sidedef.sector_number];
+            const auto& back_sector = sectors[back_sidedef.sector_number];
+
+            if(front_sector.ceiling_texture.starts_with("F_SKY") && back_sector.ceiling_texture.starts_with("F_SKY")) {
+                skip_lower = true;
+            }
+        }
+
         if (linedef.flags & wad::LineDef::TwoSided) {
             // Two-sided wall
 
             const auto& back_sidedef = sidedefs[linedef.back_sidedef];
 
             const auto& [back_faces, front_faces] = generate_faces_for_sector_boundary(
-                linedef, start_vertex, end_vertex, sidedefs, sectors, wad, map
+                linedef, start_vertex, end_vertex, sidedefs, sectors, wad, map, skip_lower
             );
 
             auto& front_sector_faces = map.sectors[front_sidedef.sector_number].faces;
@@ -448,19 +467,11 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
                 generate_one_sided_wall(linedef, end_vertex, start_vertex, back_sidedef, sectors, wad, map);
             }
         }
-
-        linedefs_per_sector.at(front_sidedef.sector_number).emplace_back(linedef.start_vertex, linedef.end_vertex);
-        if (linedef.flags & wad::LineDef::TwoSided) {
-            const auto& back_sidedef = sidedefs[linedef.back_sidedef];
-            linedefs_per_sector.at(back_sidedef.sector_number).emplace_back(linedef.end_vertex, linedef.start_vertex);
-        }
     }
 
-    // TODO: If the sector uses a F_SKYn texture for its ceiling, don't emit a ceiling for it
-
     // Split the sector into its line loops and triangulate them
-    for (auto i = 0u; i < linedefs_per_sector.size(); i++) {
-        const auto& sector_linedefs = linedefs_per_sector[i];
+    for (auto sector_index = 0u; sector_index < linedefs_per_sector.size(); sector_index++) {
+        const auto& sector_linedefs = linedefs_per_sector[sector_index];
 
         auto remaining_lines = std::vector<uint32_t>(sector_linedefs.size());
         std::iota(remaining_lines.begin(), remaining_lines.end(), 0);
@@ -536,17 +547,18 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         }
 
         if (!interior_line_loops.empty()) {
-            std::cout << std::format("WARNING: Sector {} has {} remaining inner line loops!\n", i, interior_line_loops.size());
+            std::cout << std::format("WARNING: Sector {} has {} remaining inner line loops!\n", sector_index, interior_line_loops.size());
         }
 
         // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
-        auto& map_sector = map.sectors[i];
+        auto& map_sector = map.sectors[sector_index];
 
-        const auto& sector = sectors[i];
+        const auto& sector = sectors[sector_index];
 
-        const auto emit_ceiling = !sector.ceiling_texture.starts_with("F_SKY");
+        // If we're in a sky sector, don't emit the ceiling
+        const auto is_sky_sector = !sector.ceiling_texture.starts_with("F_SKY");
 
-        if (emit_ceiling) {
+        if (is_sky_sector) {
             map_sector.ceiling.texture_index = map.get_flat_index(sector.ceiling_texture, wad);
         }
         map_sector.floor.texture_index = map.get_flat_index(sector.floor_texture, wad);
@@ -560,25 +572,21 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             }
         }
 
-        if (emit_ceiling) {
-            map_sector.ceiling.vertices.reserve(vertices.size());
-        }
+        map_sector.ceiling.vertices.reserve(vertices.size());
         map_sector.floor.vertices.reserve(vertices.size());
 
         for (const auto& vertex : vertices) {
-            if (emit_ceiling) {
-                map_sector.ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
-            }
+            map_sector.ceiling.vertices.emplace_back(vertex[0], vertex[1], sector.ceiling_height);
             map_sector.floor.vertices.emplace_back(vertex[0], vertex[1], sector.floor_height);
         }
 
-        if (emit_ceiling) {
+        if (is_sky_sector) {
             map_sector.ceiling.indices.resize(sector_ceiling_indices.size());
         }
         map_sector.floor.indices.resize(sector_ceiling_indices.size());
 
         for (auto triangle_index = 0u; triangle_index < sector_ceiling_indices.size(); triangle_index += 3) {
-            if (emit_ceiling) {
+            if (is_sky_sector) {
                 map_sector.ceiling.indices[triangle_index] = sector_ceiling_indices[triangle_index + 2];
                 map_sector.ceiling.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
                 map_sector.ceiling.indices[triangle_index + 2] = sector_ceiling_indices[triangle_index];
