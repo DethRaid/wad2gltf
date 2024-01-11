@@ -378,7 +378,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
 
             const auto rotation_quat = glm::angleAxis(glm::radians(thing.angle), glm::vec3{ 1, 0, 0 });
             thing_node.transform = fastgltf::Node::TRS{
-                .translation = {thing.position.x, thing.position.y, 0},  // TODO: Height, based on the sector it's in? Oh no
+                .translation = {thing.position.x, thing.position.y, thing.position.z},
                 .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
                 .scale = {1, 1, 1},
             };

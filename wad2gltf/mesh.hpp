@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 
+#include "sector.hpp"
 #include "texture_reader.hpp"
 
 /**
@@ -43,10 +44,12 @@ struct Sector {
     int16_t light_level;
     int16_t special_type;
     int16_t tag_number;
+
+    std::vector<std::vector<SectorVertex>> exterior_loops;
 };
 
 struct Thing {
-    glm::vec2 position;
+    glm::vec3 position;
     float angle;
 
     int16_t type;

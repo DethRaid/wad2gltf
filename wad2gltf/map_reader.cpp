@@ -8,6 +8,7 @@
 
 #include <mapbox/earcut.hpp>
 
+#include "sector.hpp"
 #include "wad.hpp"
 
 struct SectorBoundaryFaces {
@@ -199,11 +200,11 @@ void generate_one_sided_wall(
     );
 }
 
-std::vector<std::array<int16_t, 2>> extract_line_loop(
+std::vector<SectorVertex> extract_line_loop(
     const std::span<const wad::Vertex> vertexes, const std::vector<std::pair<uint16_t, uint16_t>>& sector_linedefs,
     std::vector<uint32_t>& remaining_lines
 ) {
-    auto vertices_in_loop = std::vector<std::array<int16_t, 2>>{};
+    auto vertices_in_loop = std::vector<SectorVertex>{};
 
     auto cur_line_idx = remaining_lines[0];
     auto iterating = true;
@@ -217,8 +218,7 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
 
         // Find the line that continues the loop
         iterating = false;
-        for (auto i = 0u; i < remaining_lines.size(); i++) {
-            auto idx = remaining_lines[i];
+        for (unsigned int idx : remaining_lines) {
             const auto& test_line = sector_linedefs[idx];
             if (test_line.first == cur_line.second) {
                 // This is a continuation of the loop, keep iterating
@@ -232,63 +232,9 @@ std::vector<std::array<int16_t, 2>> extract_line_loop(
     return vertices_in_loop;
 }
 
-bool is_polygon_clockwise(
-    const std::vector<std::array<int16_t, 2>>& polygon
-) {
-    int32_t area = 0;
-    for (auto i = 0u; i < polygon.size(); i++) {
-        auto j = (i + 1) % polygon.size();
-
-        const auto& v0 = polygon[i];
-        const auto& v1 = polygon[j];
-
-        area += (int32_t)v0[0] * (int32_t)v1[1] - (int32_t)v1[0] * (int32_t)v0[1];
-    }
-
-    return area > 0;
-}
-
-// Adapted from https://paulbourke.net/geometry/polygonmesh/#insidepoly
-// NOTE: vertex positions get promoted from int16 to int32 to prevent overflow
-bool is_point_in_polygon(
-    const std::array<int16_t, 2>& p,
-    const std::vector<std::array<int16_t, 2>>& polygon
-) {
-    bool result = false;
-    const int32_t p_x = p[0];
-    const int32_t p_y = p[1];
-    for (size_t i = 0, j = polygon.size()-1; i < polygon.size(); j = i++) {
-        const int32_t i_x = polygon[i][0];
-        const int32_t i_y = polygon[i][1];
-        const int32_t j_x = polygon[j][0];
-        const int32_t j_y = polygon[j][1];
-        if ((((p_y >= i_y) && (p_y < j_y)) ||
-             ((p_y >= j_y) && (p_y < i_y))) &&
-            (p_x < ((j_x - i_x) * (p_y - i_y) / (j_y - i_y) + i_x))
-        ) {
-            result = !result;
-        }
-    }
-
-    return result;
-}
-
-bool is_polygon_in_polygon(
-    const std::vector<std::array<int16_t, 2>>& candidate_hole,
-    const std::vector<std::array<int16_t, 2>>& outer_polygon
-) {
-    for (const auto& p : candidate_hole) {
-        if (is_point_in_polygon(p, outer_polygon)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 void emit_ceiling_and_floor(
     const wad::WAD& wad, const std::span<const wad::Sector> sectors, Map& map, const uint32_t i,
-    const std::vector<std::vector<std::array<int16_t, 2>>>& polygon_line_loops,
+    const std::vector<std::vector<SectorVertex>>& polygon_line_loops,
     const std::vector<unsigned short>& ceiling_indices
 ) {
     // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
@@ -400,13 +346,6 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
     map.sectors.resize(sectors.size());
     map.textures.reserve(sectors.size() * 2);
 
-    // Copy the Things
-    for (const auto& thing : things) {
-        map.things.emplace_back(
-            glm::vec2{thing.x, thing.y}, static_cast<float>(thing.facing_angle), thing.type, thing.flags
-        );
-    }
-
     // Copy the sector info into our data structure
     for (auto i = 0u; i < sectors.size(); i++) {
         const auto& sector = sectors[i];
@@ -480,7 +419,7 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             continue;
         }
 
-        auto sector_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
+        auto sector_line_loops = std::vector<std::vector<SectorVertex>>{};
         do {
             auto loop = extract_line_loop(vertexes, sector_linedefs, remaining_lines);
 
@@ -491,8 +430,8 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             sector_line_loops.emplace_back(loop);
         } while (!remaining_lines.empty());
 
-        auto exterior_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
-        auto interior_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{};
+        auto exterior_line_loops = std::vector<std::vector<SectorVertex>>{};
+        auto interior_line_loops = std::vector<std::vector<SectorVertex>>{};
         for (size_t j = 0u; j < sector_line_loops.size(); j++) {
             auto& loop = sector_line_loops[j];
 
@@ -519,8 +458,11 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         auto sector_ceiling_indices = std::vector<uint32_t>{};
         sector_line_loops.clear();
 
+        auto& map_sector = map.sectors[sector_index];
+
         for (const auto& polygon : exterior_line_loops) {
-            auto polygon_line_loops = std::vector<std::vector<std::array<int16_t, 2>>>{polygon};
+            map_sector.exterior_loops.emplace_back(polygon);
+            auto polygon_line_loops = std::vector<std::vector<SectorVertex>>{polygon};
 
             for (size_t j = 0u; j < interior_line_loops.size(); /**/) {
                 const auto& loop = interior_line_loops[j];
@@ -551,7 +493,6 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
         }
 
         // We can add the indices as-is to a ceiling flat, but we have to reverse them for a floor flat
-        auto& map_sector = map.sectors[sector_index];
 
         const auto& sector = sectors[sector_index];
 
@@ -596,6 +537,22 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             map_sector.floor.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
             map_sector.floor.indices[triangle_index + 2] = sector_ceiling_indices[triangle_index + 2];
         }
+    }
+
+    // Copy the Things
+    for (const auto& thing : things) {
+        auto sector_floor = float{ 0 };
+        for(const auto& sector : map.sectors) {
+            for(const auto& polygon : sector.exterior_loops)
+            if(is_point_in_polygon({thing.x, thing.y}, polygon)) {
+                sector_floor = sector.floor.vertices[0].z;
+                break;
+            }
+        }
+
+        map.things.emplace_back(
+            glm::vec3{ thing.x, thing.y, sector_floor }, static_cast<float>(thing.facing_angle), thing.type, thing.flags
+        );
     }
 
     return map;
