@@ -3,6 +3,7 @@
 #define __STDC_WANT_LIB_EXT1__ 1
 #include <cstring>
 #include <cctype>
+#include <format>
 #include <string_view>
 
 inline size_t strlen_s_wrapper(const char* str, size_t max_length) {

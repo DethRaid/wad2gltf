@@ -376,10 +376,10 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
             auto& thing_node = model.nodes.emplace_back();
             thing_node.name = std::format("Thing {}", thing_counter);
 
-            const auto rotation_quat = glm::angleAxis(glm::radians(thing.angle), glm::vec3{ 1, 0, 0 });
+            const auto thing_rotation = glm::angleAxis(glm::radians(thing.angle), glm::vec3{ 1, 0, 0 });
             thing_node.transform = fastgltf::Node::TRS{
                 .translation = {thing.position.x, thing.position.y, thing.position.z},
-                .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
+                .rotation = {thing_rotation.x, thing_rotation.y, thing_rotation.z, thing_rotation.w},
                 .scale = {1, 1, 1},
             };
 
