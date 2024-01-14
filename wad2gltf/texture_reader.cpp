@@ -94,17 +94,44 @@ const wad::MapTexture* find_texture_in_texture_group(
 }
 
 DecodedTexture load_flat_from_wad(const wad::Name& flat_name, const wad::WAD& wad) {
+    const auto itr = wad.find_lump(flat_name);
+    const auto pixels = wad.get_lump_data<uint8_t>(*itr);
+    return DecodedTexture{
+        .name = flat_name, .size = {64, 64}, .pixels = std::vector(pixels.begin(), pixels.end()),
+        .alpha_mask = std::vector<uint8_t>(64 * 64, 0xFF)
+    };
+}
+
+DecodedTexture load_sprite_from_wad(const wad::Name& sprite_name, const wad::WAD& wad) {
+    // V0: Find the A0 sprite, load it
+    // V1: Find all the sprites in a sequence, load them into one image
+    // V2: Find all sprites in a sequence, and the sprites for different angles, and export those
+    // V3: Find all sprites in a sequence, from all angles, for all gameplay events. Export them all into a sprite atlas
+
+    // V0
+    auto patch = DecodedPatch{};
+    auto full_sprite_name = wad::Name{};
     try {
-        const auto itr = wad.find_lump(flat_name);
-        const auto pixels = wad.get_lump_data<uint8_t>(*itr);
-        return DecodedTexture{
-            .name = flat_name, .size = {64, 64}, .pixels = std::vector(pixels.begin(), pixels.end()),
-            .alpha_mask = std::vector<uint8_t>(64 * 64, 0xFF)
-        };
-    } catch (const std::exception& e) {
-        // The texture is not a flat, return null or something
-        return {};
+        full_sprite_name = wad::Name::from_string(std::format("{}A0", sprite_name));
+        patch = get_patch(full_sprite_name, wad);
+    } catch(const std::exception& e) {
+        // Possibly no A0 - true A1?
+        full_sprite_name = wad::Name::from_string(std::format("{}A1", sprite_name));
+        patch = get_patch(full_sprite_name, wad);
+
+        // If this throws, we need a better interface for searching for sprites and probably fewer exceptions
     }
+
+    return {
+        .name = full_sprite_name,
+        .size = {patch.header.width, patch.header.height},
+        .pixels = std::move(patch.pixel_data),
+        .alpha_mask = std::move(patch.transparency)
+    };
+}
+
+bool DecodedTexture::has_transparent_pixels() const {
+    return std::find(alpha_mask.begin(), alpha_mask.end(), 0x00) != alpha_mask.end();
 }
 
 DecodedTexture load_texture_from_wad(const wad::Name& texture_name, const wad::WAD& wad) {

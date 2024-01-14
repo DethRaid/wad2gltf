@@ -44,6 +44,11 @@ namespace wad {
         Name name;
     };
 
+    enum class FindMode {
+        Equals,
+        StartsWith
+    };
+
     /**
      * WAD - Where's All the Data?
      *
@@ -107,15 +112,15 @@ namespace wad {
         int16_t front_sidedef = 0;
         int16_t back_sidedef = 0;
 
-        constexpr static inline uint16_t BlocksPlayersAndMonsters   = 0x0001;
-        constexpr static inline uint16_t BlocksMonsters             = 0x0002;
-        constexpr static inline uint16_t TwoSided                   = 0x0004;
-        constexpr static inline uint16_t UpperTextureUnpegged       = 0x0008;
-        constexpr static inline uint16_t LowerTextureUnpegged       = 0x0010;
-        constexpr static inline uint16_t Secret                     = 0x0020;
-        constexpr static inline uint16_t BlocksSound                = 0x0040;
-        constexpr static inline uint16_t NeverShowOnAutomap         = 0x0080;
-        constexpr static inline uint16_t AlwaysShowOnAutomap        = 0x0100;
+        constexpr static inline uint16_t BlocksPlayersAndMonsters = 0x0001;
+        constexpr static inline uint16_t BlocksMonsters = 0x0002;
+        constexpr static inline uint16_t TwoSided = 0x0004;
+        constexpr static inline uint16_t UpperTextureUnpegged = 0x0008;
+        constexpr static inline uint16_t LowerTextureUnpegged = 0x0010;
+        constexpr static inline uint16_t Secret = 0x0020;
+        constexpr static inline uint16_t BlocksSound = 0x0040;
+        constexpr static inline uint16_t NeverShowOnAutomap = 0x0080;
+        constexpr static inline uint16_t AlwaysShowOnAutomap = 0x0100;
     };
 
     struct SideDef {
@@ -278,11 +283,10 @@ namespace wad {
         int16_t type;
         uint16_t flags;
 
-        constexpr static inline uint16_t SkillLevel1And2    = 0x0001;
-        constexpr static inline uint16_t SkillLevel3        = 0x0002;
-        constexpr static inline uint16_t SkillLevel4And5    = 0x0004;
-        constexpr static inline uint16_t Ambush             = 0x0008;
-        constexpr static inline uint16_t MultiplayerOnly    = 0x0010;
+        constexpr static inline uint16_t SkillLevel1And2 = 0x0001;
+        constexpr static inline uint16_t SkillLevel3 = 0x0002;
+        constexpr static inline uint16_t SkillLevel4And5 = 0x0004;
+        constexpr static inline uint16_t Ambush = 0x0008;
+        constexpr static inline uint16_t MultiplayerOnly = 0x0010;
     };
 }
-

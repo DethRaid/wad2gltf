@@ -1,6 +1,11 @@
 #include "thing_reader.hpp"
 
 #include <format>
+#include <iostream>
+#include <stb_image.h>
+
+#include "map_reader.hpp"
+#include "glm/ext/quaternion_trigonometric.hpp"
 
 /**
  * \brief ALL the things!
@@ -483,7 +488,125 @@ static inline std::vector all_things = {
         .id = 81, .radius = 20, .height = 16, .sprite = {"BRS1"}, .sequence = {"A"},
         .class_flags = 0
     },
+
+    // Others
+    ThingDef{
+        .id = 11, .radius = 20, .height = 56, .sprite = {}, .sequence = {"-"},
+        .class_flags = 0
+    },
+    ThingDef{
+        .id = 89, .radius = 20, .height = 32, .sprite = {}, .sequence = {"-"},
+        .class_flags = 0
+    },
+    ThingDef{
+        .id = 1, .radius = 16, .height = 56, .sprite = {"PLAY"}, .sequence = {"A+"},
+        .class_flags = 0
+    },
+    ThingDef{
+        .id = 2, .radius = 16, .height = 56, .sprite = {"PLAY"}, .sequence = {"A+"},
+        .class_flags = 0
+    },
+    ThingDef{
+        .id = 3, .radius = 16, .height = 56, .sprite = {"PLAY"}, .sequence = {"A+"},
+        .class_flags = 0
+    },
+    ThingDef{
+        .id = 4, .radius = 16, .height = 56, .sprite = {"PLAY"}, .sequence = {"A+"},
+        .class_flags = 0
+    },
+    ThingDef{
+        .id = 88, .radius = 16, .height = 16, .sprite = {"BBRN"}, .sequence = {"A+"},
+        .class_flags = ThingFlags::Obstacle | ThingFlags::Shootable
+    },
+    ThingDef{
+        .id = 87, .radius = 20, .height = 32, .sprite = {}, .sequence = {"-"},
+        .class_flags = 0
+    },
+    ThingDef{
+        .id = 14, .radius = 20, .height = 16, .sprite = {}, .sequence = {"-"},
+        .class_flags = 0
+    },
 };
+
+bool ThingDef::is_spriteless() const {
+    // "others" don't have sprites that follow the same rules as other THINGS, so ignore them for now
+    return id == 11 || id == 89 || id == 1 || id == 2 || id == 3 || id == 4 || id == 88 || id == 87 || id == 14;
+}
+
+void load_things_into_map(const wad::WAD& wad, const MapExtractionOptions& options, Map& map) {
+    if (!options.export_things) {
+        return;
+    }
+
+    auto itr = wad.find_lump(options.map_name);
+
+    const auto map_lump_itr = itr;
+    ++itr;
+    const auto things_itr = itr;
+
+    // There's some other lumps that don't seem important for this program
+
+    const auto wad_things = wad.get_lump_data<wad::Thing>(*things_itr);
+
+    map.things.reserve(wad_things.size());
+
+    // Copy the Things
+    for (const auto& thing : wad_things) {
+        const auto& thing_def = get_thing(thing.type);
+
+        if (thing_def.is_spriteless()) {
+            // Skip spriteless things because coding is h ard
+            continue;
+        }
+
+        auto sector_floor = float{0};
+        for (const auto& sector : map.sectors) {
+            for (const auto& polygon : sector.exterior_loops) {
+                if (is_point_in_polygon({ thing.x, thing.y }, polygon)) {
+                    sector_floor = sector.floor.vertices[0].z;
+                    break;
+                }
+            }
+        }
+
+        auto thing_sprite = load_sprite_from_wad(thing_def.sprite, wad);
+
+        auto face = Face{
+            .vertices = {
+                Vertex{
+                    .position = {0, -thing_sprite.size.x / 2.f, thing_sprite.size.y},
+                    .texcoord = {1, 0}
+                },
+                Vertex{
+                    .position = {0, thing_sprite.size.x / 2.f, thing_sprite.size.y},
+                    .texcoord = {0, 0}
+                },
+                Vertex{
+                    .position = {0, -thing_sprite.size.x / 2.f, 0.f},
+                    .texcoord = {1, 1}
+                },
+                Vertex{
+                    .position = {0, thing_sprite.size.x / 2.f, 0.f},
+                    .texcoord = {0, 1}
+                },
+            },
+            .normal = glm::vec3{-1, 0, 0},
+            .texture_index = static_cast<uint32_t>(map.textures.size())
+        };
+        map.textures.emplace_back(std::move(thing_sprite));
+
+        // DOOM rotation: https://doomwiki.org/wiki/Angle
+
+        const auto radians_angle = glm::radians(static_cast<float>(thing.facing_angle));
+
+        map.things.emplace_back(
+            glm::vec3{thing.x, thing.y, sector_floor}, radians_angle, face,
+            thing.type, thing.flags
+        );
+    }
+
+    std::cout << std::format("Loaded THINGS from map {}\n", options.map_name);
+}
 
 const ThingDef& get_thing(uint16_t thing_id) {
     const auto itr = std::find_if(

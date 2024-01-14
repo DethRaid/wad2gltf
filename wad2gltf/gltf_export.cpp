@@ -203,7 +203,7 @@ void add_flat(
     primitive.materialIndex = flat.texture_index;
 }
 
-fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, const GltfExportOptions& options) {
+fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, const MapExtractionOptions& options) {
     auto model = fastgltf::Asset{};
     model.defaultScene = 0;
     model.assetInfo = fastgltf::AssetInfo{.gltfVersion = "2.0", .generator = "wad2gltf"};
@@ -223,7 +223,14 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
     for (const auto& texture : map.textures) {
         auto& gltf_material = model.materials.emplace_back();
         gltf_material.name = texture.name.to_string();
-        // TODO: Use masked alpha for images with transparency
+
+        if(texture.has_transparent_pixels()) {
+            gltf_material.alphaMode = fastgltf::AlphaMode::Mask;
+            gltf_material.alphaCutoff = 0.5;
+        } else {
+            gltf_material.alphaMode = fastgltf::AlphaMode::Opaque;
+        }
+
         gltf_material.pbrData.baseColorTexture = fastgltf::TextureInfo{
             .textureIndex = model.textures.size(), .texCoordIndex = 0
         };
@@ -314,6 +321,35 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
         sector_index++;
     }
 
+    if (options.export_things) {
+        // Put all the Things at the end
+        auto thing_counter = 0u;
+        for (const auto& thing : map.things) {
+            model.nodes[parent_node_idx].children.emplace_back(model.nodes.size());
+
+            auto& node = model.nodes.emplace_back();
+            node.name = std::format("Thing {}", thing_counter);
+
+            const auto thing_rotation = glm::angleAxis(thing.angle, glm::vec3{ 0, 0, 1 });
+            node.transform = fastgltf::Node::TRS{
+                .translation = {thing.position.x, thing.position.y, thing.position.z},
+                .rotation = {thing_rotation.x, thing_rotation.y, thing_rotation.z, thing_rotation.w},
+                .scale = {1, 1, 1},
+            };
+
+            node.meshIndex = model.meshes.size();
+
+            auto& mesh = model.meshes.emplace_back();
+            mesh.name = node.name;
+
+            add_face(thing.sprite, model, positions, normals, texcoords, indices, mesh);
+
+            model.materials[thing.sprite.texture_index].doubleSided = true;
+
+            thing_counter++;
+        }
+    }
+
     auto& indices_buffer_view = model.bufferViews.emplace_back();
     indices_buffer_view.name = "Indices Buffer View";
     indices_buffer_view.bufferIndex = 0;
@@ -366,26 +402,6 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
     texcoords_buffer.byteLength = texcoords.size();
     texcoords_buffer.name = "Texcoords";
     texcoords_buffer.data = fastgltf::sources::Vector{.bytes = texcoords};
-
-    if (options.export_things) {
-        // Put all the Things at the end
-        auto thing_counter = 0u;
-        for (const auto& thing : map.things) {
-            model.nodes[parent_node_idx].children.emplace_back(model.nodes.size());
-
-            auto& thing_node = model.nodes.emplace_back();
-            thing_node.name = std::format("Thing {}", thing_counter);
-
-            const auto thing_rotation = glm::angleAxis(glm::radians(thing.angle), glm::vec3{ 1, 0, 0 });
-            thing_node.transform = fastgltf::Node::TRS{
-                .translation = {thing.position.x, thing.position.y, thing.position.z},
-                .rotation = {thing_rotation.x, thing_rotation.y, thing_rotation.z, thing_rotation.w},
-                .scale = {1, 1, 1},
-            };
-
-            thing_counter++;
-        }
-    }
 
     return model;
 }

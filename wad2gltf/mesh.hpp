@@ -50,7 +50,13 @@ struct Sector {
 
 struct Thing {
     glm::vec3 position;
+
+    /**
+     * \brief Angle that the thing should face, in radians
+     */
     float angle;
+
+    Face sprite;
 
     int16_t type;
     uint16_t flags;

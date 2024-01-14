@@ -2,6 +2,7 @@
 
 #define __STDC_WANT_LIB_EXT1__ 1
 #include <cstring>
+#include <cmath>
 #include <cctype>
 #include <format>
 #include <string_view>
@@ -22,6 +23,9 @@ inline size_t strlen_s_wrapper(const char* str, size_t max_length) {
 
 namespace wad {
     struct Name {
+        template<typename StringType>
+        static Name from_string(const StringType& str);
+
         char val[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
         bool operator==(std::string_view str) const;
@@ -36,6 +40,22 @@ namespace wad {
 
         bool starts_with(std::string_view prefix) const;
     };
+
+    template <typename StringType>
+    Name Name::from_string(const StringType& str) {
+        auto name = Name{};
+        const auto len = std::min(str.size(), size_t{ 8 });
+        auto i = 0u;
+        for(i; i < len; i++) {
+            name.val[i] = str[i];
+        }
+
+        for(i; i < 8; i++) {
+            name.val[i] = '\0';
+        }
+
+        return name;
+    }
 
     inline bool Name::operator==(const std::string_view str) const {
         return memcmp(val, str.data(), std::min(str.size(), static_cast<size_t>(8))) == 0;

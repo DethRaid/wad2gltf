@@ -313,7 +313,6 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
     validate_lump_name(*nodes_itr, "NODES");
     validate_lump_name(*sectors_itr, "SECTORS");
 
-    const auto things = wad.get_lump_data<wad::Thing>(*things_itr);
     const auto linedefs = wad.get_lump_data<wad::LineDef>(*linedefs_itr);
     const auto sidedefs = wad.get_lump_data<wad::SideDef>(*sidedefs_itr);
     const auto vertexes = wad.get_lump_data<wad::Vertex>(*vertexes_itr);
@@ -342,7 +341,6 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
      */
 
     auto map = Map{};
-    map.things.reserve(things.size());
     map.sectors.resize(sectors.size());
     map.textures.reserve(sectors.size() * 2);
 
@@ -537,22 +535,6 @@ Map create_mesh_from_map(const wad::WAD& wad, const MapExtractionOptions& option
             map_sector.floor.indices[triangle_index + 1] = sector_ceiling_indices[triangle_index + 1];
             map_sector.floor.indices[triangle_index + 2] = sector_ceiling_indices[triangle_index + 2];
         }
-    }
-
-    // Copy the Things
-    for (const auto& thing : things) {
-        auto sector_floor = float{ 0 };
-        for(const auto& sector : map.sectors) {
-            for(const auto& polygon : sector.exterior_loops)
-            if(is_point_in_polygon({thing.x, thing.y}, polygon)) {
-                sector_floor = sector.floor.vertices[0].z;
-                break;
-            }
-        }
-
-        map.things.emplace_back(
-            glm::vec3{ thing.x, thing.y, sector_floor }, static_cast<float>(thing.facing_angle), thing.type, thing.flags
-        );
     }
 
     return map;

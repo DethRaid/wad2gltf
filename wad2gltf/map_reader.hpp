@@ -1,7 +1,6 @@
 #pragma once
 
-#include <string>
-
+#include "extraction_options.hpp"
 #include "mesh.hpp"
 #include "wad.hpp"
 
@@ -11,9 +10,6 @@
  * Contains utilities to create a mesh from a WAD map
  */
 
-struct MapExtractionOptions {
-    std::string map_name;
-};
 
 /**
  * Creates a mesh from a map in the WAD data

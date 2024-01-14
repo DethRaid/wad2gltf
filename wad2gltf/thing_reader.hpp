@@ -2,7 +2,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "mesh.hpp"
 #include "wad_name.hpp"
+
+struct MapExtractionOptions;
 
 namespace ThingFlags {
     enum Class : uint8_t {
@@ -23,6 +26,9 @@ struct ThingDef {
     wad::Name sprite;
     wad::Name sequence;
     uint8_t class_flags;
+    bool is_spriteless() const;
 };
+
+void load_things_into_map(const wad::WAD& wad, const MapExtractionOptions& options, Map& map);
 
 const ThingDef& get_thing(uint16_t thing_id);
