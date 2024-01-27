@@ -269,7 +269,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
     auto& parent_node = model.nodes.emplace_back();
     parent_node.name = name;
     const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{ 1, 0, 0 });
-    parent_node.transform = fastgltf::Node::TRS{
+    parent_node.transform = fastgltf::TRS{
         .translation = {0, 0, 0},
         .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
         .scale = {0.833f / 64.f, 0.833f / 64.f, 1.f / 64.f},
@@ -286,7 +286,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
         auto& node = model.nodes.emplace_back();
         node.name = std::format("{} Sector {}", name, sector_index);
 
-        node.transform = fastgltf::Node::TRS{
+        node.transform = fastgltf::TRS{
                 .translation = {0, 0, 0},
                 .rotation = {0, 0, 0, 1},
                 .scale = {1, 1, 1},
@@ -331,7 +331,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
             node.name = std::format("Thing {}", thing_counter);
 
             const auto thing_rotation = glm::angleAxis(thing.angle, glm::vec3{ 0, 0, 1 });
-            node.transform = fastgltf::Node::TRS{
+            node.transform = fastgltf::TRS{
                 .translation = {thing.position.x, thing.position.y, thing.position.z},
                 .rotation = {thing_rotation.x, thing_rotation.y, thing_rotation.z, thing_rotation.w},
                 .scale = {1, 1, 1},
