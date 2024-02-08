@@ -386,22 +386,22 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
     auto& indices_buffer = model.buffers[0];
     indices_buffer.byteLength = indices.size();
     indices_buffer.name = "Indices";
-    indices_buffer.data = fastgltf::sources::Vector{.bytes = indices};
+    auto indices_data = fastgltf::sources::Array{.bytes = fastgltf::StaticVector<uint8_t>::fromVector(indices)};
 
     auto& positions_buffer = model.buffers[1];
     positions_buffer.byteLength = positions.size();
     positions_buffer.name = "Positions";
-    positions_buffer.data = fastgltf::sources::Vector{.bytes = positions};
+    positions_buffer.data = fastgltf::sources::Array{.bytes = fastgltf::StaticVector<uint8_t>::fromVector(positions)};
 
     auto& normals_buffer = model.buffers[2];
     normals_buffer.byteLength = normals.size();
     normals_buffer.name = "Normals";
-    normals_buffer.data = fastgltf::sources::Vector{.bytes = normals};
+    normals_buffer.data = fastgltf::sources::Array{.bytes = fastgltf::StaticVector<uint8_t>::fromVector(normals)};
 
     auto& texcoords_buffer = model.buffers[3];
     texcoords_buffer.byteLength = texcoords.size();
     texcoords_buffer.name = "Texcoords";
-    texcoords_buffer.data = fastgltf::sources::Vector{.bytes = texcoords};
+    texcoords_buffer.data = fastgltf::sources::Array{.bytes = fastgltf::StaticVector<uint8_t>::fromVector(texcoords)};
 
     return model;
 }

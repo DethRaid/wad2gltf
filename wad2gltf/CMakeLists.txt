@@ -20,7 +20,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     fastgltf
     GIT_REPOSITORY  https://github.com/spnda/fastgltf.git
-    GIT_TAG         8e6556746016e0309e02f013d3a3ebd8c0a53856
+    GIT_TAG         71d21e6986ad2296a99050a4bfd9c16b5c91d2e1
 )
 
 FetchContent_Declare(
@@ -75,3 +75,4 @@ foreach(SOURCE_FILE IN LISTS WAD2GLTF_SOURCE)
         
     source_group("cpp/${SOURCE_PATH_RELATIVE}" FILES "${SOURCE_FILE}")
 endforeach()
+
