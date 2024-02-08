@@ -386,7 +386,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
     auto& indices_buffer = model.buffers[0];
     indices_buffer.byteLength = indices.size();
     indices_buffer.name = "Indices";
-    auto indices_data = fastgltf::sources::Array{.bytes = fastgltf::StaticVector<uint8_t>::fromVector(indices)};
+    indices_buffer.data = fastgltf::sources::Array{.bytes = fastgltf::StaticVector<uint8_t>::fromVector(indices)};
 
     auto& positions_buffer = model.buffers[1];
     positions_buffer.byteLength = positions.size();
