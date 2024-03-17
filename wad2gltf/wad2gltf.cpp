@@ -1,14 +1,14 @@
 ﻿// wad2gltf.cpp : Defines the entry point for the application.
 //
 
-#include <iostream>
-
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <ranges>
-#include <stb_image_write.h>
 
 #include <CLI/CLI.hpp>
+#include <fastgltf/core.hpp>
+#include <stb_image_write.h>
 
 #include "gltf_export.hpp"
 #include "map_reader.hpp"
@@ -16,18 +16,15 @@
 #include "texture_reader.hpp"
 #include "thing_reader.hpp"
 #include "wad_loader.hpp"
-#include "fastgltf/core.hpp"
 
-/*
- * TODO: Real command-line parsing
- *
- * We want to support --help, but basic usage is that you specify the input file with an optional output file. If no
- * output file is specified, output to stdout
- *
- * We'll also need options to select a map to make a glTF file for, or an option to just make different glTF meshes for
- * each map in the WAD. Could have options for different glTF extensions (basisu) or different ways of combining faces
- * (should faces with the same texture become part of the same mesh?)
- */
+std::optional<std::string> write_extras(const std::size_t object_index, const fastgltf::Category object_type, void* user_pointer) {
+    if(object_type == fastgltf::Category::Nodes) {
+        auto* node_extras = static_cast<std::vector<std::optional<std::string>>*>(user_pointer);
+        return node_extras->at(object_index);
+    }
+
+    return std::nullopt;
+}
 
 int main(const int argc, const char** argv) {
     CLI::App app{
@@ -85,11 +82,13 @@ map, and one Mesh Primitive for each sector. It can optionally extract the Thing
 
         // Load all the textures for each sector
 
-        const auto gltf_map = export_to_gltf(extraction_options.map_name, map, extraction_options);
+        auto [gltf_map, node_extras] = export_to_gltf(extraction_options.map_name, map, extraction_options);
         std::cout << "Generated glTF data\n";
 
         auto exporter = fastgltf::FileExporter{};
         exporter.setImagePath("textures");
+        exporter.setExtrasWriteCallback(write_extras);
+        exporter.setUserPointer(&node_extras);
 
         const auto result = exporter.writeGltfJson(
             gltf_map, extraction_options.output_file, fastgltf::ExportOptions::PrettyPrintJson

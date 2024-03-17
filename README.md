@@ -2,9 +2,11 @@
 
 ## A WAD to glTF 2.0 converter
 
-This tool extracts a map from a WAD file and writes it to a glTF file. It created one glTF Node and Mesh for each sector, and creates up to three Primitives for each sidedef (upper, middle, and lower). It also extracts the textures from the WAD and converts the textures to PNG 
+This tool extracts a map from a WAD file and writes it to a glTF file. It created one glTF Node and Mesh for each sector, and creates up to three Primitives for each sidedef (upper, middle, and lower). It also extracts the textures from the WAD and converts the textures to PNG
 
-This tool exports THINGS, but it does not preserve their IDs nor does it place them at the correct height in the world
+This tool exports THINGS. It places them at a height of 0
+
+This tool add glTF extras to Nodes for sectors and things. The extras has a `type` field and a `data` field. The `type` is the type of Node - 0 for Thing, 1 for Sector. The `data` is the data for that type. Things have a Thing type and some flags, sectors have a light level, a special type, and a tag number
 
 This tool does not export any of the original culling information, and it's not likely to. Modern computers are able to render an entire DOOM level with ease
 

@@ -20,7 +20,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     fastgltf
     GIT_REPOSITORY  https://github.com/spnda/fastgltf.git
-    GIT_TAG         71d21e6986ad2296a99050a4bfd9c16b5c91d2e1
+    GIT_TAG         v0.7.1
 )
 
 FetchContent_Declare(
@@ -29,7 +29,13 @@ FetchContent_Declare(
     GIT_TAG         7882684a2cd69005fb57001c17a332899621e2be
 )
 
-FetchContent_MakeAvailable(cli11 earcut fastgltf glm)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY  https://github.com/nlohmann/json.git
+    GIT_TAG         v3.11.3
+)
+
+FetchContent_MakeAvailable(cli11 earcut fastgltf glm nlohmann_json)
 
 # STB
 FetchContent_Declare(
@@ -60,6 +66,7 @@ target_link_libraries(wad2gltf PUBLIC
     earcut_hpp::earcut_hpp
     fastgltf
     glm
+    nlohmann_json::nlohmann_json
     stb
 )
 

@@ -2,11 +2,11 @@
 
 #include <format>
 #include <stb_image_write.h>
-
 #include <glm/ext/quaternion_trigonometric.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/ext/scalar_reciprocal.hpp>
 
-#include "glm/ext/scalar_reciprocal.hpp"
+#include "gltf_extras.hpp"
 
 template <typename DataType>
 void write_data_to_buffer(std::vector<uint8_t>& buffer, const std::span<const DataType> data) {
@@ -203,12 +203,15 @@ void add_flat(
     primitive.materialIndex = flat.texture_index;
 }
 
-fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, const MapExtractionOptions& options) {
+ExportedWad export_to_gltf(const std::string_view name, const Map& map, const MapExtractionOptions& options) {
     auto model = fastgltf::Asset{};
     model.defaultScene = 0;
     model.assetInfo = fastgltf::AssetInfo{.gltfVersion = "2.0", .generator = "wad2gltf"};
 
     model.nodes.reserve(map.sectors.size() + map.things.size());
+
+    auto node_extras = std::vector<std::optional<std::string>>{};
+    node_extras.reserve(model.nodes.size());
 
     auto& scene = model.scenes.emplace_back();
     scene.name = std::string{name};
@@ -224,7 +227,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
         auto& gltf_material = model.materials.emplace_back();
         gltf_material.name = texture.name.to_string();
 
-        if(texture.has_transparent_pixels()) {
+        if (texture.has_transparent_pixels()) {
             gltf_material.alphaMode = fastgltf::AlphaMode::Mask;
             gltf_material.alphaCutoff = 0.5;
         } else {
@@ -267,8 +270,9 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
     const auto parent_node_idx = model.nodes.size();
     scene.nodeIndices.emplace_back(parent_node_idx);
     auto& parent_node = model.nodes.emplace_back();
+    node_extras.emplace_back(std::nullopt);
     parent_node.name = name;
-    const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{ 1, 0, 0 });
+    const auto rotation_quat = glm::angleAxis(glm::radians(-90.f), glm::vec3{1, 0, 0});
     parent_node.transform = fastgltf::TRS{
         .translation = {0, 0, 0},
         .rotation = {rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w},
@@ -287,12 +291,13 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
         node.name = std::format("{} Sector {}", name, sector_index);
 
         node.transform = fastgltf::TRS{
-                .translation = {0, 0, 0},
-                .rotation = {0, 0, 0, 1},
-                .scale = {1, 1, 1},
+            .translation = {0, 0, 0},
+            .rotation = {0, 0, 0, 1},
+            .scale = {1, 1, 1},
         };
 
-        // TODO: Write extras when fastgltf supports them
+        const nlohmann::json sector_extra = SectorExtra{ .type = Type::Sector, .data = sector };
+        node_extras.emplace_back(sector_extra.dump());
 
         // Don't emit a mesh for empty sectors. Their nodes will define them
         if (sector.faces.empty() && sector.ceiling.indices.empty() && sector.floor.indices.empty()) {
@@ -312,10 +317,10 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
         // Add the floor and ceiling primitives
         // The floor or ceiling may be empty for F_SKYn (where the sky should be drawn)
         if (!sector.ceiling.indices.empty()) {
-            add_flat(sector.ceiling, glm::vec3{ 0, 0, -1 }, model, positions, normals, texcoords, indices, mesh);
+            add_flat(sector.ceiling, glm::vec3{0, 0, -1}, model, positions, normals, texcoords, indices, mesh);
         }
         if (!sector.floor.indices.empty()) {
-            add_flat(sector.floor, glm::vec3{ 0, 0, 1 }, model, positions, normals, texcoords, indices, mesh);
+            add_flat(sector.floor, glm::vec3{0, 0, 1}, model, positions, normals, texcoords, indices, mesh);
         }
 
         sector_index++;
@@ -330,7 +335,7 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
             auto& node = model.nodes.emplace_back();
             node.name = std::format("Thing {}", thing_counter);
 
-            const auto thing_rotation = glm::angleAxis(thing.angle, glm::vec3{ 0, 0, 1 });
+            const auto thing_rotation = glm::angleAxis(thing.angle, glm::vec3{0, 0, 1});
             node.transform = fastgltf::TRS{
                 .translation = {thing.position.x, thing.position.y, thing.position.z},
                 .rotation = {thing_rotation.x, thing_rotation.y, thing_rotation.z, thing_rotation.w},
@@ -345,6 +350,9 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
             add_face(thing.sprite, model, positions, normals, texcoords, indices, mesh);
 
             model.materials[thing.sprite.texture_index].doubleSided = true;
+
+            const nlohmann::json thing_json = ThingExtra{.type = Type::Thing, .data = thing};
+            node_extras.emplace_back(thing_json.dump());
 
             thing_counter++;
         }
@@ -403,5 +411,5 @@ fastgltf::Asset export_to_gltf(const std::string_view name, const Map& map, cons
     texcoords_buffer.name = "Texcoords";
     texcoords_buffer.data = fastgltf::sources::Array{.bytes = fastgltf::StaticVector<uint8_t>::fromVector(texcoords)};
 
-    return model;
+    return { .asset = std::move(model), .node_extras = std::move(node_extras) };
 }
