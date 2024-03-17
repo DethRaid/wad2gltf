@@ -9,7 +9,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Sector, light_level, special_type, tag_number
 
 enum class Type {
     Thing,
-    Line,
     Sector,
 };
 
